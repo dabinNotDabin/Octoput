@@ -5,7 +5,16 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include "pthread.h"
 
+
+
+
+void * worker(void * id)
+{
+
+	pthread_exit(0);
+}
 
 int main(int argc, char** argv)
 {
@@ -19,12 +28,12 @@ int main(int argc, char** argv)
 	int partialOctolegSize;
 	int leftoverDataSize;
 
-	string filename;
+	std::string filename;
 
-	string *octoblocks;
+	std::string *octoblocks;
 
-	ifstream in;
-	string fileContents;
+	std::ifstream in;
+	std::string fileContents;
 
 	if (argc > 1 && argc < 4)
 	{
@@ -70,7 +79,7 @@ int main(int argc, char** argv)
 			((partialOctoblockSize > 0) ? 1 : 0) +
 			((leftoverDataSize > 0) ? 1 : 0);
 
-		octoblocks = new string[totalOctoblocksNeeded];
+		octoblocks = new std::string[totalOctoblocksNeeded];
 
 
 		// Divide file contents into octoblocks and store in array, padding leftover data if necessary.
@@ -108,13 +117,13 @@ int main(int argc, char** argv)
 		//			If the timer reaches some threshold, the octoleg is resent.
 
 
-		pthread_t *threadArray;
-		threadArray = new pthread_t[totalOctoblocksNeeded * 8];
+		pthread_t *threads;
+		threads = new pthread_t[totalOctoblocksNeeded * 8];
 		long status;
 		long i;
 		for (i = 0; i < totalOctoblocksNeeded * 8; i++)
 		{
-			status = pthread_create(&threadArray[i], NULL, isPrime, (void *)i);
+			status = pthread_create(&threads[i], NULL, worker, (void *)i);
 			if (status != 0)
 			{
 				std::cout << "Creation of thread resulted in error.\n";
@@ -122,11 +131,14 @@ int main(int argc, char** argv)
 			}
 		}
 
+		for (i = 0; i < totalOctoblocksNeeded * 8; i++)
+			pthread_join(threads[i], NULL);
+
+		delete[] threads;
 	}
 
 
 	delete[] octoblocks;
-	delete[] threadArray;
 
     return 0;
 }
