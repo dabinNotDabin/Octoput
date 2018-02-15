@@ -27,6 +27,11 @@ private:
 	Socket *UDPSocket;
 
 
+	string constructHeader(char octolegFlag, short packetSize, const char* data);
+
+	int computeChecksum(const char* data);
+	short oneComplementSum(short i, short j);
+
 };
 
 

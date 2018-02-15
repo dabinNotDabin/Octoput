@@ -92,3 +92,45 @@ bool UDPServer::bindSocket()
 
 	return true;
 }
+
+
+string UDPServer::constructHeader(char octolegFlag, short packetSize, const char* data)
+{
+	string headerStr;
+	int checksum;
+
+	headerStr = octolegFlag + to_string(packetSize) + string(data);
+	checksum = computeChecksum(headerStr.c_str());
+
+	return headerStr + to_string(checksum);
+}
+
+
+int UDPServer::computeChecksum(const char* data)
+{
+
+}
+
+
+short UDPServer::oneComplementSum(short i, short j)
+{
+	short a = i & j;
+	short x;
+	short l;
+	short wrap;
+	unsigned short k = 65536;
+
+	while (a != 0)
+	{
+		x = i ^ j;
+
+		wrap = a & k;
+
+		l = a << 1 + (k == 0 ? 0 : 1);
+
+		i = x;
+		j = l;
+	}
+
+	return i ^ j;
+}
