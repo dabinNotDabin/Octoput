@@ -1,5 +1,4 @@
-// Octoput.cpp : Defines the entry point for the console application.
-//
+
 
 #include "global.h"
 #include "UDPClient.h"
@@ -108,6 +107,11 @@ int main(int argc, char** argv)
 
 
 
+		// By here we have: 
+		//	N Octoblocks of size 8888 in octoblocks[0] through octoblocks[numFullOctoblocksNeeded - 1]
+		//	An Octoblock of size "partialOctoblockSize" in octoblocks[numFullOctoblocksNeeded]   ***if partialOctoblockSize > 0
+		//	An Octoblock of size "leftoverDataSize" in octoblocks[numFullOctoblocksNeeded + 1]   ***if leftoverDataSize > 0
+
 		OctoMonocto octoMonocto;
 		octoMonocto =
 		{
@@ -118,10 +122,6 @@ int main(int argc, char** argv)
 		};
 
 
-		// By here we have: 
-		//	N Octoblocks of size 8888 in octoblocks[0] through octoblocks[numFullOctoblocksNeeded - 1]
-		//	An Octoblock of size "partialOctoblockSize" in octoblocks[numFullOctoblocksNeeded]   ***if partialOctoblockSize > 0
-		//	An Octoblock of size "leftoverDataSize" in octoblocks[numFullOctoblocksNeeded + 1]   ***if leftoverDataSize > 0
 
 		UDPServer server;
 		UDPClient client;
@@ -132,6 +132,9 @@ int main(int argc, char** argv)
 			"Size Of Partial Octoblock: " + to_string(octoMonocto.partialOctoblockSize) + "\r\n" +
 			"Size Of Partial Octolegs: " + to_string(octoMonocto.partialOctolegSize) + "\r\n" +
 			"Size Of Leftover Data: " + to_string(octoMonocto.leftoverDataSize) + "\r\n";
+
+
+
 
 
 		// Begin sending octolegs through to the client socket.
