@@ -1,4 +1,4 @@
-#include "Sloxy.h"
+#include "global.h"
 #include "Socket.h"
 
 using namespace std;

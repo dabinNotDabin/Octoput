@@ -1,4 +1,4 @@
-#include "Sloxy.h"
+#include "global.h"
 #include "UDPServer.h"
 
 using namespace std;
@@ -72,7 +72,7 @@ bool UDPServer::bindSocket()
 		}
 
 		UDPSocket->getAddress(address);
-		bindResult = bind(UDPSocket->getFD, (struct sockaddr *)&address, sizeof(address));
+		bindResult = bind(UDPSocket->getFD(), (struct sockaddr *)&address, sizeof(address));
 
 		if (bindResult < 0)
 		{

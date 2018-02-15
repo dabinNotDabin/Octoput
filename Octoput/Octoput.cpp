@@ -1,29 +1,7 @@
 // Octoput.cpp : Defines the entry point for the console application.
 //
 
-#include "stdafx.h"
-#include <string>
-#include <iostream>
-#include <fstream>
-#include "pthread.h"
-
-
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/types.h> 
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <vector>
-#include <errno.h>
-
-#include <netdb.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <map>
-
+#include "global.h"
 #include "UDPClient.h"
 #include "UDPServer.h"
 
@@ -67,7 +45,7 @@ int main(int argc, char** argv)
 		// No port specified
 		if (argc == 2)
 		{
-			port = 80;
+			port = 12345;
 			filename = argv[1];
 		}
 		else
@@ -109,6 +87,8 @@ int main(int argc, char** argv)
 		octoblocks = new std::string[totalOctoblocksNeeded];
 
 
+		octoblocks = new std::string[10000000];
+
 		// Divide file contents into octoblocks and store in array, padding leftover data if necessary.
 		for (int i = 0; i < totalOctoblocksNeeded; i++)
 		{
@@ -128,9 +108,15 @@ int main(int argc, char** argv)
 
 
 
-		OctoMonocto octoMonocto;		
-		octoMonocto = {numFullOctoblocksNeeded, partialOctoblockSize, partialOctolegSize, leftoverDataSize};
-		
+		OctoMonocto octoMonocto;
+		octoMonocto =
+		{
+			(short)numFullOctoblocksNeeded,
+			(short)partialOctoblockSize,
+			(short)partialOctolegSize,
+			(short)leftoverDataSize
+		};
+
 
 		// By here we have: 
 		//	N Octoblocks of size 8888 in octoblocks[0] through octoblocks[numFullOctoblocksNeeded - 1]
@@ -142,10 +128,10 @@ int main(int argc, char** argv)
 
 
 		string octoDesripto =
-			"Number Of Full Octoblocks: "	+ to_string(octoMonocto.numFullOctoblocks)		+ "\r\n" +
-			"Size Of Partial Octoblock: "	+ to_string(octoMonocto.partialOctoblockSize)	+ "\r\n" +
-			"Size Of Partial Octolegs: "	+ to_string(octoMonocto.partialOctolegSize)		+ "\r\n" +
-			"Size Of Leftover Data: "		+ to_string(octoMonocto.leftoverDataSize)		+ "\r\n";
+			"Number Of Full Octoblocks: " + to_string(octoMonocto.numFullOctoblocks) + "\r\n" +
+			"Size Of Partial Octoblock: " + to_string(octoMonocto.partialOctoblockSize) + "\r\n" +
+			"Size Of Partial Octolegs: " + to_string(octoMonocto.partialOctolegSize) + "\r\n" +
+			"Size Of Leftover Data: " + to_string(octoMonocto.leftoverDataSize) + "\r\n";
 
 
 		// Begin sending octolegs through to the client socket.
@@ -161,7 +147,7 @@ int main(int argc, char** argv)
 		//			A timer is set to 0 on send and the thread successfully exits when an ack is received.
 		//			If the timer reaches some threshold, the octoleg is resent.
 		//			Each thread is passed in an identifier indicating which octoleg is is responsible for.
-		//			When an ACK is received, the thread can exit.
+		//			When an ACK is received, the thread can exit if the ACK's checksum is valid.
 		//			Each thread increments the counter by 1 before exiting.
 
 		//	Receive octolegs, possibly using threads.
@@ -210,14 +196,23 @@ int main(int argc, char** argv)
 			}
 		}
 
+
+
 		for (i = 0; i < totalOctoblocksNeeded * 8; i++)
 			pthread_join(threads[i], NULL);
 
+
 		delete[] threads;
+		delete[] octoblocks;
 	}
-
-
-	delete[] octoblocks;
+	else
+	{
+		cout
+			<< "Usage: \n"
+			<< "\tOctoput <port#> <filename>\n"
+			<< "\t\tOR\n"
+			<< "\tOctoput <filename>\tport is default to 12345.\n";
+	}
 
     return 0;
 }
