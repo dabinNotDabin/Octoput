@@ -12,11 +12,16 @@ class UDPServer
 public:
 	UDPServer();
 	~UDPServer();
+	
+	// Associates <address> with <socketFD> and binds it, naming it for the OS.
+	bool bindSocket(int socketFD, struct sockaddr_in address);
+
+	//	Binds the default UDPSocket using the address associated with it.
+	//		The UDPSocket must be instantiated first so it is assigned a FD (see "Socket.h").
+	//		It uses the address associated with the UDPSocket.
+	bool bindSocket();
 
 
-	int initSocket(short family, short type, short protocol);
-
-	bool bindAddressWithSocket(int socketFD, struct sockaddr_in address);
 
 private:
 	Socket *UDPSocket;

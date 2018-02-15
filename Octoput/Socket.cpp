@@ -5,53 +5,45 @@ using namespace std;
 
 Socket::Socket()
 {
-	ID == -1;
+	FD == -1;
 	addressInitialized = false;
 }
+
+
 
 Socket::~Socket()
 {
 }
 
 
-int Socket::getID()
+int Socket::getFD()
 {
-	return ID;
+	return FD;
 }
 
-bool Socket::init(short type, short protocol)
-{
-	ID = socket(AF_INET, type, protocol);
 
-	if (ID < 0)
+
+void Socket::initSocket(short family, short type, short protocol)
+{
+	int fd = socket(family, type, protocol);
+
+	if (fd < 0)
 	{
 		cout << "Socket creation failed.. Socket id is -1.\n";
-		return false;
+		return -1;
 	}
 
 	cout << "Socket initialized\n";
 
-	return true;
+	FD = fd;
+
+	return;
 }
 
-bool Socket::init(short sin_family, short type, short protocol)
-{
-	ID = socket(sin_family, type, protocol);
-
-	if (ID < 0)
-	{
-		cout << "Socket creation failed.. Socket id is -1.\n";
-		return false;
-	}
-
-	cout << "Socket initialized\n";
-
-	return true;
-}
 
 
 // Set the address of the socket to a specific port with general settings for other parameters.
-void Socket::setAddress(int port)
+void Socket::associateAddress(int port)
 {
 	memset(&socketAddress, 0, sizeof(socketAddress));
 	socketAddress.sin_family = AF_INET;
@@ -62,7 +54,7 @@ void Socket::setAddress(int port)
 }
 
 // Set the address of the socket to match that of the address parameter.
-void Socket::setAddress(struct sockaddr_in address)
+void Socket::associateAddress(struct sockaddr_in address)
 {
 	memset(&socketAddress, 0, sizeof(socketAddress));
 	socketAddress.sin_family = address.sin_family;
@@ -73,36 +65,20 @@ void Socket::setAddress(struct sockaddr_in address)
 }
 
 
-
-// Binds the address associated with this Socket to the physical socket for identification purposes.
-// Clients can attempt to connect to this socket using the address that is bound to it.
-// Sockets don't necessarily need an address bound to them, for instance, client sockets.
-// It uses the address that can be set by a call to "setAddress"
-bool Socket::bindAddressWithSocket()
+void Socket::getAddress(struct sockaddr_in &address)
 {
-	if (ID < 0 || !addressInitialized)
+	if (addressInitialized)
 	{
-		if (ID < 0)
-			cout << "Socket ID not valid.\n";
-		else
-			cout << "Socket address must be initialzed with a call to \"setAddress\" before binding.\n";
-
-		return false;
+		memset(&address, 0, sizeof(address));
+		address.sin_family = socketAddress.sin_family;
+		address.sin_port = socketAddress.sin_port;
+		address.sin_addr = socketAddress.sin_addr;
 	}
-
-
-	// Bind the socket to the port
-	int bindResult = bind(ID, (struct sockaddr *)&socketAddress, sizeof(socketAddress));
-	if (bindResult  < 0)
-	{
-		cout << "Socket binding failed.\n";
-		return false;
-	}
-	
-	cout << "Address bound to socket.\n";
-
-	return true;
 }
 
 
 
+bool Socket::addressIsInitialized()
+{
+	return addressInitialized;
+}

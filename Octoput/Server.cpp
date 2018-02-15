@@ -20,20 +20,6 @@ UDPServer::~UDPServer()
 
 
 
-int UDPServer::initSocket(short family, short type, short protocol)
-{
-	int FD = socket(family, type, protocol);
-
-	if (FD < 0)
-	{
-		cout << "Socket creation failed.. Socket id is -1.\n";
-		return -1;
-	}
-
-	cout << "Socket initialized\n";
-
-	return FD;
-}
 
 
 // Call with.. 
@@ -42,50 +28,65 @@ int UDPServer::initSocket(short family, short type, short protocol)
 //address.sin_port = htons(port);
 //address.sin_addr.s_addr = htonl(INADDR_ANY);
 // For server that listens for any ip on port <port> using AF_INET
-bool UDPServer::bindAddressWithSocket(int socketFD, struct sockaddr_in address)
+bool UDPServer::bindSocket(int socketFD, struct sockaddr_in address)
 {
 	if (socketFD < 0)
 	{
-		cout << "Socket ID not valid, using private member variable as default.\n";
-
-		if (UDPSocket != NULL)
-		{
-			cout << "Using default socketFD.\n";
-			socketFD = UDPSocket->getID();
-		}
-		else
-		{
-			cout << "Default socket is null.\n";
-			return false;
-		}
+		cout << "Socket FD <socketFD> is not valid, cannot bind.\n";
+		return false;
 	}
 
 	int bindResult = bind(socketFD, (struct sockaddr *)&address, sizeof(address));
 	if (bindResult < 0)
 	{
-		cout << "Socket binding failed..  Either the address is invalid or the socket is not free.\n\tAttempting to use the socketFD and address associated with default the Socket";
-		if (UDPSocket != NULL)
-		{
-			socketFD == UDPSocket->getID();
-			address = UDPSocket->getAddress();
-			bindResult = bind(socketFD, (struct sockaddr *)&address, sizeof(address));
+		cout << "Socket binding failed..  Either the address is invalid or the socket is not free.\n";
+		return false;
+	}
+	else
+	{
+		cout << "Success binding socket.\n";
+	}
 
-			if (bindResult < 0)
-			{
-				cout << "Failure binding default socket. Address may not be set properly.\n";
-			}
-			else
-			{
-				cout << "Success binding default socket.\n";
-			}
+
+	return true;
+}
+
+
+
+
+bool UDPServer::bindSocket()
+{
+	if (UDPSocket != NULL)
+	{
+		cout << "Using default socketFD and address to bind.\n";
+
+		int bindResult;
+		sockaddr_in address;
+
+		if (!UDPSocket->addressIsInitialized())
+		{
+			cout << "No address has been associated with the default socket, cannot bind.\n";
+			return false;
+		}
+
+		UDPSocket->getAddress(address);
+		bindResult = bind(UDPSocket->getFD, (struct sockaddr *)&address, sizeof(address));
+
+		if (bindResult < 0)
+		{
+			cout << "Socket binding failed..  Either the address is invalid or the socket is not free.\n";
+			return false;
 		}
 		else
 		{
-			cout << "Default Socket hasn't been initialized.\n";
-			return false;
+			cout << "Success binding socket.\n";
 		}
 	}
-	cout << "Address bound to socket.\n";
+	else
+	{
+		cout << "Default socket is null, instantiate it first.\n";
+		return false;
+	}
 
 	return true;
 }
