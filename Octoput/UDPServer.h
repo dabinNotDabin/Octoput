@@ -22,14 +22,14 @@ public:
 	bool bindSocket();
 
 
+	int computeChecksum(const char* data, char* destinationIP);
 
 private:
 	Socket *UDPSocket;
 
 
-	string constructHeader(char octolegFlag, short packetSize, const char* data);
+	std::string constructHeader(char octolegFlag, short packetSize, const char* data);
 
-	int computeChecksum(const char* data);
 	short oneComplementSum(short i, short j);
 
 };

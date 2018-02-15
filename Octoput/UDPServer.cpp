@@ -94,20 +94,38 @@ bool UDPServer::bindSocket()
 }
 
 
-string UDPServer::constructHeader(char octolegFlag, short packetSize, const char* data)
+std::string UDPServer::constructHeader(char octolegFlag, short packetSize, const char* data)
 {
 	string headerStr;
 	int checksum;
 
 	headerStr = octolegFlag + to_string(packetSize) + string(data);
-	checksum = computeChecksum(headerStr.c_str());
+//	checksum = computeChecksum(headerStr.c_str());
 
 	return headerStr + to_string(checksum);
 }
 
 
-int UDPServer::computeChecksum(const char* data)
+int UDPServer::computeChecksum(const char* data, char* destinationIP)
 {
+	struct sockaddr_in serverAddress;
+	char* sourceIP;	
+	string worker;
+	int i;
+	int j;
+
+//	UDPSocket->getAddress(serverAddress);
+
+	inet_pton(AF_INET, "127.0.0.1", &serverAddress.sin_addr);
+	sourceIP = inet_ntoa(serverAddress.sin_addr);
+	
+	worker = string(sourceIP);
+	cout << "SourceIP: " << worker << endl;
+
+	
+
+	// sum pseudo header.
+
 
 }
 

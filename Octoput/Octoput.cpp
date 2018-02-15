@@ -135,7 +135,7 @@ int main(int argc, char** argv)
 
 
 
-
+		server.computeChecksum(octoDesripto.c_str(), new char[5]);
 
 		// Begin sending octolegs through to the client socket.
 		//	Initiate by sending a file information packet that tells the receiver what to expect for data
