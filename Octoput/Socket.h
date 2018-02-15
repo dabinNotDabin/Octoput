@@ -1,11 +1,13 @@
 #pragma once
 
+// A socket has a file descriptor and can have an address associated with it.
+// This class setters that allow you to initialize a socket and associate an address.
+// It 
 
 // Typical usage:
 //	Instantiate a socket object.
 //	Use initSocket(3) to initialize it.
-//	Associate an address with it if necessary.
-//	Use getAddress(1) to bind the socket if necessary.
+//	Associate an address with it if necessary for binding and use getAddress(1) to bind.
 //	Use getFD(0) to send/receive to/from socket.
 
 class Socket
@@ -28,7 +30,7 @@ public:
 	int getFD();
 
 	// Initialize the socket, resulting in the OS assigning it a file descriptor.
-	void initSocket(short family, short type, short protocol);
+	bool initSocket(short family, short type, short protocol);
 
 	bool addressIsInitialized();
 

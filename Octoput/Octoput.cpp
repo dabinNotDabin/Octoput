@@ -8,7 +8,34 @@
 #include "pthread.h"
 
 
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h> 
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <vector>
+#include <errno.h>
+
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <map>
+
+#include "UDPClient.h"
+#include "UDPServer.h"
+
+
+
+struct OctoMonocto
+{
+	short numFullOctoblocks;
+	short partialOctoblockSize;
+	short partialOctolegSize;
+	short leftoverDataSize;
+};
 
 void * worker(void * id)
 {
@@ -101,20 +128,72 @@ int main(int argc, char** argv)
 
 
 
+		OctoMonocto octoMonocto;		
+		octoMonocto = {numFullOctoblocksNeeded, partialOctoblockSize, partialOctolegSize, leftoverDataSize};
+		
+
 		// By here we have: 
 		//	N Octoblocks of size 8888 in octoblocks[0] through octoblocks[numFullOctoblocksNeeded - 1]
 		//	An Octoblock of size "partialOctoblockSize" in octoblocks[numFullOctoblocksNeeded]   ***if partialOctoblockSize > 0
 		//	An Octoblock of size "leftoverDataSize" in octoblocks[numFullOctoblocksNeeded + 1]   ***if leftoverDataSize > 0
 
-		// Instantiate a server socket.
-		// Instantiate a client socket.
+		UDPServer server;
+		UDPClient client;
+
+
+		string octoDesripto =
+			"Number Of Full Octoblocks: "	+ to_string(octoMonocto.numFullOctoblocks)		+ "\r\n" +
+			"Size Of Partial Octoblock: "	+ to_string(octoMonocto.partialOctoblockSize)	+ "\r\n" +
+			"Size Of Partial Octolegs: "	+ to_string(octoMonocto.partialOctolegSize)		+ "\r\n" +
+			"Size Of Leftover Data: "		+ to_string(octoMonocto.leftoverDataSize)		+ "\r\n";
+
+
 		// Begin sending octolegs through to the client socket.
 		//	Initiate by sending a file information packet that tells the receiver what to expect for data
+		//		Send first before any threading takes place.
 		//	Construct an octoleg header with octoleg size and sequence number tag, identifying it within it's octoblock
 		//	Send octolegs, possibly using threads.
+		//		Need 8 threads since only one octoblock can be sent at a time.
+		//		At the beginning of each octoblock, a counter is set to 0.
+		//			When it reaches 7, we know all octolegs have been sent.
+		//			At 7, the counter is reset and threads must be reinitialized for new octoblock.
 		//		Each octoleg is sent by a thread.
 		//			A timer is set to 0 on send and the thread successfully exits when an ack is received.
 		//			If the timer reaches some threshold, the octoleg is resent.
+		//			Each thread is passed in an identifier indicating which octoleg is is responsible for.
+		//			When an ACK is received, the thread can exit.
+		//			Each thread increments the counter by 1 before exiting.
+
+		//	Receive octolegs, possibly using threads.
+		//		Need 8 threads since only one octoblock can be sent at a time.
+		//		At the beginning of each octoblock, a counter is set to 0.
+		//			When it reaches 7, we know all octolegs have been received.
+		//			At 7, the counter is reset and threads must be reinitialized for new octoblock.
+		//		Each octoleg is processed by a thread.
+		//			Each thread is passed in an identifier indicating which octoleg is is responsible for.
+		//			When an octoleg is successfully received, it's data can be stored in the buffer.
+		//				position in the buffer will be determined by the octoleg #, octoblock #, and their size info.
+		//			Each thread increments the counter by 1 before exiting.
+
+
+
+		// The client side file buffer should be safe since each thread is accessing a separate portion of it's memory
+		// On the client side, need an incoming octoblock buffer with 8 arrays, one for each octoleg.
+		// The client receives data continuously and checks the first 8 bits for the octoleg flag
+		//		It stores the data in the buffer associated with that ocotleg and sets a flag
+		//		telling the thread that is processing that octoleg that data has arrived.
+		//		The thread processes the segment, evaluating the checksum and sends ACK if valid.
+		//			Condition variables would work well to signal that a piece of data has arrived.
+		//
+		// The server instantiates the global octoblock buffer that holds the data to be sent.
+		//		The server threads each construct and send their own octoleg including header information
+		//		and monitor for ACKS / deal with retransmissions.
+		//		
+		//		The ACKs are sent with checksums as well and these are evaluated by the threads
+		//
+		//		The server thus needs to maintain an ACK reception buffer where ACKs are placed according to the
+		//		octoleg flag, with a flag that is raised letting the thread know to check the ACK.
+		//			Condition variables would work well to wait on the incoming ACK
 
 
 		pthread_t *threads;

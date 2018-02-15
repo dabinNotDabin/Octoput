@@ -23,21 +23,21 @@ int Socket::getFD()
 
 
 
-void Socket::initSocket(short family, short type, short protocol)
+bool Socket::initSocket(short family, short type, short protocol)
 {
 	int fd = socket(family, type, protocol);
 
 	if (fd < 0)
 	{
 		cout << "Socket creation failed.. Socket id is -1.\n";
-		return -1;
+		return false;
 	}
 
 	cout << "Socket initialized\n";
 
 	FD = fd;
 
-	return;
+	return true;
 }
 
 
