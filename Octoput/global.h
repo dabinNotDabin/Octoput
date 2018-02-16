@@ -20,3 +20,17 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <map>
+
+
+
+unsigned short computeChecksum(const char* data, const char* destinationIP, unsigned int clientPort);
+unsigned short oneComplementSum(unsigned int k);
+
+
+struct OctoMonocto
+{
+	short numFullOctoblocks;
+	short partialOctoblockSize;
+	short partialOctolegSize;
+	short leftoverDataSize;
+};

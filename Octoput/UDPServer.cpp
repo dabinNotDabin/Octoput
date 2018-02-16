@@ -20,6 +20,18 @@ UDPServer::~UDPServer()
 }
 
 
+int UDPServer::getSocketFD()
+{
+	return UDPSocket != NULL ? UDPSocket->getFD() : -1;
+}
+
+
+struct sockaddr_in UDPServer::getClientAddress()
+{
+	return clientAddress;
+}
+
+
 // Note that this is configured to use the local host IP and the given family for the client's address.
 UDPServer::UDPServer(short family, short type, short protocol, unsigned int port, unsigned int clientPort)
 {
@@ -113,6 +125,189 @@ bool UDPServer::bindSocket()
 }
 
 
+
+void UDPServer::commenceOctovation()
+{	
+	string filename = getFileRequest();
+	string octoDescripto;
+
+	if (filename == "\0")
+	{
+		cout << "Receive filename unsuccessful..exiting.\n";
+		exit(0);
+	}
+
+
+	in.open(filename);
+	getline(in, fileContents, '\0');
+	in.close();
+
+
+	instantiateOctoMonocto();
+	instantiateOctoblocks();
+
+
+
+	octoDescripto =
+		"Total Size Of File: " + to_string(fileContents.length()) + "\r\n" +
+		"Number Of Full Octoblocks: " + to_string(octoMonocto.numFullOctoblocks) + "\r\n" +
+		"Size Of Partial Octoblock: " + to_string(octoMonocto.partialOctoblockSize) + "\r\n" +
+		"Size Of Partial Octolegs: " + to_string(octoMonocto.partialOctolegSize) + "\r\n" +
+		"Size Of Leftover Data: " + to_string(octoMonocto.leftoverDataSize) + "\r\n";
+
+
+	sendto
+	(
+		UDPSocket->getFD(),
+		octoDescripto.c_str(),
+		octoDescripto.length(),
+		0,
+		clientAddressPtr,
+		clientAddressLen
+	);
+
+
+
+
+
+	return;
+}
+
+
+
+std::string UDPServer::getFileRequest()
+{
+	int nBytesRcvd;
+	char filename[276];
+	cout << "Received.\n";
+
+	nBytesRcvd = recvfrom
+	(
+		UDPSocket->getFD(),
+		filename,
+		276,
+		0,
+		clientAddressPtr,
+		&clientAddressLen
+	);
+
+
+	// Probably wanna check that nBytesReceived correlates with value in header
+	if (nBytesRcvd == -1)
+	{
+		cout << "Failure.\n";
+		return '\0';
+	}
+
+	filename[nBytesRcvd + 1] = '\0';
+	cout << "Filename Received: ";
+	for (int i = 0; i < nBytesRcvd; i++)
+		cout << filename[i];
+	cout << endl;
+
+	in.open(filename);
+
+
+	while (!(strncmp(filename, "quit", 4) == 0) && !in.good())
+	{
+		in.close();
+
+		nBytesRcvd = recvfrom
+		(
+			UDPSocket->getFD(),
+			filename,
+			276,
+			0,
+			clientAddressPtr,
+			&clientAddressLen
+		);
+
+		// Probably wanna check that nBytesReceived correlates with value in header
+		if (nBytesRcvd == -1)
+			return '\0';
+
+		filename[nBytesRcvd + 1] = '\0';
+		cout << "Filename Received: ";
+		for (int i = 0; i < nBytesRcvd; i++)
+			cout << filename[i];
+		cout << endl;
+
+		in.open(filename);
+	}
+
+	in.close();
+
+	if (strncmp(filename, "quit", 4) == 0)
+		return '\0';
+	else
+		return filename;
+}
+
+
+
+void UDPServer::instantiateOctoMonocto()
+{
+	numFullOctoblocksNeeded = fileContents.length() / octoblockSize;
+
+	// If partialOctoblockSize is not 0, have to send partial octoblock.
+	partialOctoblockSize = fileContents.length() % 8888;
+
+	if (partialOctoblockSize != 0)
+	{
+		leftoverDataSize = partialOctoblockSize % 8;
+		partialOctolegSize = (partialOctoblockSize - leftoverDataSize) / 8;
+	}
+	else
+	{
+		partialOctoblockSize = -1;
+		partialOctolegSize = -1;
+		leftoverDataSize = -1;
+	}
+
+
+	totalOctoblocksNeeded =
+		numFullOctoblocksNeeded +
+		((partialOctoblockSize > 0) ? 1 : 0) +
+		((leftoverDataSize > 0) ? 1 : 0);
+
+	octoMonocto =
+	{
+		(short)numFullOctoblocksNeeded,
+		(short)partialOctoblockSize,
+		(short)partialOctolegSize,
+		(short)leftoverDataSize
+	};
+
+}
+
+
+
+void UDPServer::instantiateOctoblocks()
+{
+	octoblocks = new std::string[totalOctoblocksNeeded];
+	octoblocks = new std::string[10000000];
+
+	// Divide file contents into octoblocks and store in array, padding leftover data if necessary.
+	for (int i = 0; i < totalOctoblocksNeeded; i++)
+	{
+		if (i < numFullOctoblocksNeeded)
+		{
+			octoblocks[i] = fileContents.substr(i * octoblockSize, octoblockSize);
+		}
+		else if (i == totalOctoblocksNeeded - 2)
+		{
+			octoblocks[i] = fileContents.substr(numFullOctoblocksNeeded * octoblockSize, partialOctoblockSize);
+		}
+		else // (i == totalOctoblocksNeeded - 1)
+		{
+			octoblocks[i] = fileContents.substr(numFullOctoblocksNeeded * octoblockSize + partialOctoblockSize);
+		}
+	}
+}
+
+
+
+
 std::string UDPServer::constructHeader(char octolegFlag, short packetSize, const char* data)
 {
 	string headerStr;
@@ -125,164 +320,3 @@ std::string UDPServer::constructHeader(char octolegFlag, short packetSize, const
 }
 
 
-unsigned short UDPServer::computeChecksum(const char* data, const char* destinationIP, unsigned int clientPort)
-{
-	struct sockaddr_in serverAddress;
-	char* sourceIP;	
-	string pseudoHeaderIPs;
-	string udpPacketData;
-	string worker;
-	unsigned short i;
-	unsigned short j;
-	unsigned short checksum;
-	unsigned int sum;
-	char* byte;
-
-//	UDPSocket->getAddress(serverAddress);
-
-	inet_pton(AF_INET, "192.168.0.31", &serverAddress.sin_addr);
-	sourceIP = inet_ntoa(serverAddress.sin_addr);
-	
-	pseudoHeaderIPs = string(sourceIP + string(".") + string(destinationIP));
-	cout << "SourceIP: " << pseudoHeaderIPs << endl;
-
-
-	// Begin Source IP
-	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-	i = atoi(worker.c_str());
-//	cout << i << endl;
-	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
-	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-//	cout << atoi(worker.c_str()) << endl;
-	i = (i << 8) | atoi(worker.c_str());
-	cout << "I: " << i << endl;
-	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
-
-
-	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-	j = atoi(worker.c_str());
-//	cout << j << endl;
-	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
-	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-//	cout << atoi(worker.c_str()) << endl;
-	j = (j << 8) | atoi(worker.c_str());
-	cout << "J: " << j << endl;
-	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
-
-
-	sum = i + j;
-	cout << "SUM: " << sum << endl;
-
-
-	// Begin Dest IP
-	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-	i = atoi(worker.c_str());
-//	cout << i << endl;
-	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
-	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-//	cout << atoi(worker.c_str()) << endl;
-	i = (i << 8) | atoi(worker.c_str());
-	cout << "I: " << i << endl;
-	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
-
-	sum = sum + i;
-
-	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-	i = atoi(worker.c_str());
-//	cout << i << endl;
-	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
-	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-//	cout << atoi(worker.c_str()) << endl;
-	i = (i << 8) | atoi(worker.c_str());
-	cout << "I: " << i << endl;
-//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
-
-	sum = sum + i;
-	// End Dest IP
-
-	cout << "SUM: " << sum << endl;
-
-
-	// Begin Protocol
-	i = 17;
-	sum = sum + i;
-	cout << "SUM: " << sum << endl;
-	// End Protocol
-
-
-	// Begin UDP Length
-	udpPacketData = string(data);
-	i = 8 + udpPacketData.length();
-	sum = sum + i;
-	cout << "SUM: " << sum << endl;
-	// End UDP Length
-
-
-	// Begin Src Port
-	i = serverAddress.sin_port;
-	i = 20;
-	sum = sum + i;
-	cout << "SUM: " << sum << endl;
-	// End Src Port
-
-	// Begin Dst Port
-	i = clientPort;
-	sum = sum + i;
-	cout << "SUM: " << sum << endl;
-	// End Dst Port
-
-	// Begin UDP Length
-	udpPacketData = string(data);
-	i = 8 + udpPacketData.length();
-	sum = sum + i;
-	cout << "SUM: " << sum << endl;
-	// End UDP Length
-
-	cout << "UDP Packet: " << udpPacketData << endl;
-
-	cout << "UDP Packet Len: " << udpPacketData.length() << endl;
-
-	char c;
-	for (int x = 0; x < udpPacketData.length(); x += 2)
-	{
-		c = data[x];
-		i = (unsigned short)c;
-//		cout << "I: " << i << endl;
-
-		c = data[x+1];
-//		cout << "I: " << (unsigned short)c << endl;
-		i = (i << 8) | (unsigned short)c;
-//		cout << "I: " << i << endl;
-
-		sum = sum + i;
-//		cout << "SUM: " << sum << endl;
-	}
-
-	
-	checksum = oneComplementSum(sum);
-
-	if (checksum != 65535)
-		checksum = ~checksum;
-
-	cout << "Checksum: " << checksum << endl;
-}
-
-
-unsigned short UDPServer::oneComplementSum(unsigned int k)
-{
-	unsigned int l = 65535;
-
-	while ((k >> 16) > 0)
-	{
-		k = (k & l) + (k >> 16);
-	}
-
-	return k;
-}

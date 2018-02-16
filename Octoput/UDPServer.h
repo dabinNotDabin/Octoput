@@ -23,16 +23,47 @@ public:
 	//	It uses the address associated with the UDPSocket.
 	bool bindSocket();
 
+	int getSocketFD();
+	struct sockaddr_in getClientAddress();
 
-	unsigned short computeChecksum(const char* data, const char* destinationIP, unsigned int clientPort);
+	// Initiate file transfer.
+	void commenceOctovation();
+
+	Socket *UDPSocket;
+	struct sockaddr_in clientAddress;
+	struct sockaddr* clientAddressPtr = (struct sockaddr*)&clientAddress;
+	int clientAddressLen = sizeof(*clientAddressPtr);
+
 
 private:
-	Socket *UDPSocket;
-	sockaddr_in clientAddress;
+	//Socket *UDPSocket;
+	//struct sockaddr_in clientAddress;
+	//struct sockaddr* clientAddressPtr = (struct sockaddr*)&clientAddress;
+	//int clientAddressLen = sizeof(*clientAddressPtr);
+
+	OctoMonocto octoMonocto;
+
+
+	std::ifstream in;
+	std::string filename;
+	std::string fileContents;
+
+	int octoblockSize = 8888;
+	int totalOctoblocksNeeded;
+	int numFullOctoblocksNeeded;
+	int partialOctoblockSize;
+	int partialOctolegSize;
+	int leftoverDataSize;
+
+	std::string *octoblocks;
 
 
 	std::string constructHeader(char octolegFlag, short packetSize, const char* data);
-	unsigned short oneComplementSum(unsigned int k);
+
+
+	std::string getFileRequest();
+	void instantiateOctoMonocto();
+	void instantiateOctoblocks();
 
 };
 

@@ -6,13 +6,7 @@
 
 
 
-struct OctoMonocto
-{
-	short numFullOctoblocks;
-	short partialOctoblockSize;
-	short partialOctolegSize;
-	short leftoverDataSize;
-};
+
 
 void * worker(void * id)
 {
@@ -22,32 +16,21 @@ void * worker(void * id)
 
 int main(int argc, char** argv)
 {
-	int port;
-
-
-	int numFullOctoblocksNeeded;
-	int octoblockSize = 8888;
-
-	int partialOctoblockSize;
-	int partialOctolegSize;
-	int leftoverDataSize;
-
-	std::string filename;
-
-	std::string *octoblocks;
-
-	std::ifstream in;
-	std::string fileContents;
-
-	
 	unsigned int serverPort = 12345;
 	unsigned int clientPort = 54321;
 
 
+	int port;
+	string filename;
+
+	ifstream in;
+	string fileContents;
+
 
 	if (argc > 1 && argc < 4)
 	{
-		// No port specified
+		// Change so client sends file request.
+		//		Server port and Client port are taken as command line args.
 		if (argc == 2)
 		{
 			port = 12345;
@@ -65,89 +48,32 @@ int main(int argc, char** argv)
 		in.close();
 
 
-		numFullOctoblocksNeeded = fileContents.length() / octoblockSize;
 
-
-		// If partialOctoblockSize is not 0, have to send partial octoblock.
-		partialOctoblockSize = fileContents.length() % 8888;
-
-		if (partialOctoblockSize != 0)
-		{
-			leftoverDataSize = partialOctoblockSize % 8;
-			partialOctolegSize = (partialOctoblockSize - leftoverDataSize) / 8;
-		}
-		else
-		{
-			partialOctoblockSize = -1;
-			partialOctolegSize = -1;
-			leftoverDataSize = -1;
-		}
-
-
-		int totalOctoblocksNeeded =
-			numFullOctoblocksNeeded +
-			((partialOctoblockSize > 0) ? 1 : 0) +
-			((leftoverDataSize > 0) ? 1 : 0);
-
-		octoblocks = new std::string[totalOctoblocksNeeded];
-
-
-		octoblocks = new std::string[10000000];
-
-		// Divide file contents into octoblocks and store in array, padding leftover data if necessary.
-		for (int i = 0; i < totalOctoblocksNeeded; i++)
-		{
-			if (i < numFullOctoblocksNeeded)
-			{
-				octoblocks[i] = fileContents.substr(i * octoblockSize, octoblockSize);
-			}
-			else if (i == totalOctoblocksNeeded - 2)
-			{
-				octoblocks[i] = fileContents.substr(numFullOctoblocksNeeded * octoblockSize, partialOctoblockSize);
-			}
-			else // (i == totalOctoblocksNeeded - 1)
-			{
-				octoblocks[i] = fileContents.substr(numFullOctoblocksNeeded * octoblockSize + partialOctoblockSize);
-			}
-		}
-
-
-
-		// By here we have: 
-		//	N Octoblocks of size 8888 in octoblocks[0] through octoblocks[numFullOctoblocksNeeded - 1]
-		//	An Octoblock of size "partialOctoblockSize" in octoblocks[numFullOctoblocksNeeded]   ***if partialOctoblockSize > 0
-		//	An Octoblock of size "leftoverDataSize" in octoblocks[numFullOctoblocksNeeded + 1]   ***if leftoverDataSize > 0
-
-		OctoMonocto octoMonocto;
-		octoMonocto =
-		{
-			(short)numFullOctoblocksNeeded,
-			(short)partialOctoblockSize,
-			(short)partialOctolegSize,
-			(short)leftoverDataSize
-		};
-
-
-
+		// If successful, the server owns a bound socket and is ready to send and receive
 		UDPServer server(AF_INET, SOCK_DGRAM, IPPROTO_UDP, serverPort, clientPort);
-		UDPClient client(AF_INET, SOCK_DGRAM, IPPROTO_UDP, clientPort, serverPort);
 
+		// If successful, the client owns a socket and is ready to send and receive
+		UDPClient client(AF_INET, SOCK_DGRAM, IPPROTO_UDP, clientPort, serverPort);
 
 		
 
-		string octoDesripto =
-			"Number Of Full Octoblocks: " + to_string(octoMonocto.numFullOctoblocks) + "\r\n" +
-			"Size Of Partial Octoblock: " + to_string(octoMonocto.partialOctoblockSize) + "\r\n" +
-			"Size Of Partial Octolegs: " + to_string(octoMonocto.partialOctolegSize) + "\r\n" +
-			"Size Of Leftover Data: " + to_string(octoMonocto.leftoverDataSize) + "\r\n";
 
 		unsigned short checksum;
 
 		string testDestIP = "192.168.0.30";
 		clientPort = 10;
-		checksum = server.computeChecksum(octoDesripto.c_str(), testDestIP.c_str(), clientPort);
+		checksum = computeChecksum("Hi", testDestIP.c_str(), clientPort);
 
+
+		client.commenceOctovation(server);
+//		server.commenceOctovation();
 		
+
+		//char mssg[1131]; //max octoleg size 1111 + 20 for udp header and pseudo header
+		//int mssgLen;
+
+		//mssgLen = octoDesripto.length()
+		//memcpy(mssg, octoDesripto.c_str(), mssgLen);
 
 
 
@@ -235,3 +161,168 @@ int main(int argc, char** argv)
     return 0;
 }
 
+
+
+
+
+unsigned short computeChecksum(const char* data, const char* destinationIP, unsigned int clientPort)
+{
+	struct sockaddr_in serverAddress;
+	char* sourceIP;
+	string pseudoHeaderIPs;
+	string udpPacketData;
+	string worker;
+	unsigned short i;
+	unsigned short j;
+	unsigned short checksum;
+	unsigned int sum;
+	char* byte;
+
+	//	UDPSocket->getAddress(serverAddress);
+
+	inet_pton(AF_INET, "192.168.0.31", &serverAddress.sin_addr);
+	sourceIP = inet_ntoa(serverAddress.sin_addr);
+
+	pseudoHeaderIPs = string(sourceIP + string(".") + string(destinationIP));
+	cout << "SourceIP: " << pseudoHeaderIPs << endl;
+
+
+	// Begin Source IP
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	i = atoi(worker.c_str());
+	//	cout << i << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	//	cout << atoi(worker.c_str()) << endl;
+	i = (i << 8) | atoi(worker.c_str());
+	cout << "I: " << i << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+
+
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	j = atoi(worker.c_str());
+	//	cout << j << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	//	cout << atoi(worker.c_str()) << endl;
+	j = (j << 8) | atoi(worker.c_str());
+	cout << "J: " << j << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+
+
+	sum = i + j;
+	cout << "SUM: " << sum << endl;
+
+
+	// Begin Dest IP
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	i = atoi(worker.c_str());
+	//	cout << i << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	//	cout << atoi(worker.c_str()) << endl;
+	i = (i << 8) | atoi(worker.c_str());
+	cout << "I: " << i << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+
+	sum = sum + i;
+
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	i = atoi(worker.c_str());
+	//	cout << i << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	//	cout << atoi(worker.c_str()) << endl;
+	i = (i << 8) | atoi(worker.c_str());
+	cout << "I: " << i << endl;
+	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+
+	sum = sum + i;
+	// End Dest IP
+
+	cout << "SUM: " << sum << endl;
+
+
+	// Begin Protocol
+	i = 17;
+	sum = sum + i;
+	cout << "SUM: " << sum << endl;
+	// End Protocol
+
+
+	// Begin UDP Length
+	udpPacketData = string(data);
+	i = 8 + udpPacketData.length();
+	sum = sum + i;
+	cout << "SUM: " << sum << endl;
+	// End UDP Length
+
+
+	// Begin Src Port
+	i = serverAddress.sin_port;
+	i = 20;
+	sum = sum + i;
+	cout << "SUM: " << sum << endl;
+	// End Src Port
+
+	// Begin Dst Port
+	i = clientPort;
+	sum = sum + i;
+	cout << "SUM: " << sum << endl;
+	// End Dst Port
+
+	// Begin UDP Length
+	udpPacketData = string(data);
+	i = 8 + udpPacketData.length();
+	sum = sum + i;
+	cout << "SUM: " << sum << endl;
+	// End UDP Length
+
+	cout << "UDP Packet: " << udpPacketData << endl;
+
+	cout << "UDP Packet Len: " << udpPacketData.length() << endl;
+
+	char c;
+	for (int x = 0; x < udpPacketData.length(); x += 2)
+	{
+		c = data[x];
+		i = (unsigned short)c;
+		//		cout << "I: " << i << endl;
+
+		c = data[x + 1];
+		//		cout << "I: " << (unsigned short)c << endl;
+		i = (i << 8) | (unsigned short)c;
+		//		cout << "I: " << i << endl;
+
+		sum = sum + i;
+		//		cout << "SUM: " << sum << endl;
+	}
+
+
+	checksum = oneComplementSum(sum);
+
+	if (checksum != 65535)
+		checksum = ~checksum;
+
+	cout << "Checksum: " << checksum << endl;
+}
+
+
+unsigned short oneComplementSum(unsigned int k)
+{
+	unsigned int l = 65535;
+
+	while ((k >> 16) > 0)
+	{
+		k = (k & l) + (k >> 16);
+	}
+
+	return k;
+}
