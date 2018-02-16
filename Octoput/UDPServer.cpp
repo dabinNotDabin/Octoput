@@ -3,7 +3,7 @@
 
 using namespace std;
 
-
+#include <sstream>
 
 
 UDPServer::UDPServer()
@@ -106,49 +106,163 @@ std::string UDPServer::constructHeader(char octolegFlag, short packetSize, const
 }
 
 
-int UDPServer::computeChecksum(const char* data, char* destinationIP)
+unsigned short UDPServer::computeChecksum(const char* data, const char* destinationIP)
 {
 	struct sockaddr_in serverAddress;
 	char* sourceIP;	
+	string pseudoHeaderIPs;
+	string udpPacketData;
 	string worker;
-	int i;
-	int j;
+	unsigned short i;
+	unsigned short j;
+	unsigned short checksum;
+	unsigned int sum;
+	char* byte;
 
 //	UDPSocket->getAddress(serverAddress);
 
-	inet_pton(AF_INET, "127.0.0.1", &serverAddress.sin_addr);
+	inet_pton(AF_INET, "192.168.0.31", &serverAddress.sin_addr);
 	sourceIP = inet_ntoa(serverAddress.sin_addr);
 	
-	worker = string(sourceIP);
-	cout << "SourceIP: " << worker << endl;
+	pseudoHeaderIPs = string(sourceIP + string(".") + string(destinationIP));
+	cout << "SourceIP: " << pseudoHeaderIPs << endl;
+
+
+	// Begin Source IP
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	i = atoi(worker.c_str());
+//	cout << i << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+//	cout << atoi(worker.c_str()) << endl;
+	i = (i << 8) | atoi(worker.c_str());
+	cout << "I: " << i << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+
+
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	j = atoi(worker.c_str());
+//	cout << j << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+//	cout << atoi(worker.c_str()) << endl;
+	j = (j << 8) | atoi(worker.c_str());
+	cout << "J: " << j << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+
+
+	sum = i + j;
+	cout << "SUM: " << sum << endl;
+
+
+	// Begin Dest IP
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	i = atoi(worker.c_str());
+//	cout << i << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+//	cout << atoi(worker.c_str()) << endl;
+	i = (i << 8) | atoi(worker.c_str());
+	cout << "I: " << i << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+
+	sum = sum + i;
+
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+	i = atoi(worker.c_str());
+//	cout << i << endl;
+	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
+//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
+//	cout << atoi(worker.c_str()) << endl;
+	i = (i << 8) | atoi(worker.c_str());
+	cout << "I: " << i << endl;
+//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
+
+	sum = sum + i;
+	// End Dest IP
+
+	cout << "SUM: " << sum << endl;
+
+
+	// Begin Protocol
+	i = 17;
+	sum = sum + i;
+	cout << "SUM: " << sum << endl;
+	// End Protocol
+
+
+	// Begin UDP Length
+	udpPacketData = string(data);
+	i = 8 + udpPacketData.length();
+	sum = sum + i;
+	cout << "SUM: " << sum << endl;
+	// End UDP Length
+
+
+	// Begin Src Port
+	i = 20;
+	sum = sum + i;
+	cout << "SUM: " << sum << endl;
+	// End Src Port
+
+	// Begin Dst Port
+	i = 10;
+	sum = sum + i;
+	cout << "SUM: " << sum << endl;
+	// End Dst Port
+
+	// Begin UDP Length
+	udpPacketData = string(data);
+	i = 8 + udpPacketData.length();
+	sum = sum + i;
+	cout << "SUM: " << sum << endl;
+	// End UDP Length
+
+	cout << "UDP Packet: " << udpPacketData << endl;
+
+	cout << "UDP Packet Len: " << udpPacketData.length() << endl;
+
+	char c;
+	for (int x = 0; x < udpPacketData.length(); x += 2)
+	{
+		c = data[x];
+		i = (unsigned short)c;
+		cout << "I: " << i << endl;
+
+		c = data[x+1];
+		cout << "I: " << (unsigned short)c << endl;
+		i = (i << 8) | (unsigned short)c;
+		cout << "I: " << i << endl;
+
+		sum = sum + i;
+		cout << "SUM: " << sum << endl;
+	}
 
 	
+	checksum = oneComplementSum(sum);
 
-	// sum pseudo header.
+	if (checksum != 65535)
+		checksum = ~checksum;
 
-
+	cout << "Checksum: " << checksum << endl;
 }
 
 
-short UDPServer::oneComplementSum(short i, short j)
+unsigned short UDPServer::oneComplementSum(unsigned int k)
 {
-	short a = i & j;
-	short x;
-	short l;
-	short wrap;
-	unsigned short k = 65536;
+	unsigned int l = 65535;
 
-	while (a != 0)
+	while ((k >> 16) > 0)
 	{
-		x = i ^ j;
-
-		wrap = a & k;
-
-		l = a << 1 + (k == 0 ? 0 : 1);
-
-		i = x;
-		j = l;
+		k = (k & l) + (k >> 16);
 	}
 
-	return i ^ j;
+	return k;
 }

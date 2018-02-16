@@ -133,9 +133,12 @@ int main(int argc, char** argv)
 			"Size Of Partial Octolegs: " + to_string(octoMonocto.partialOctolegSize) + "\r\n" +
 			"Size Of Leftover Data: " + to_string(octoMonocto.leftoverDataSize) + "\r\n";
 
+		unsigned short checksum;
+
+		string testDestIP = "192.168.0.30";
+		checksum = server.computeChecksum("Hi", testDestIP.c_str());
 
 
-		server.computeChecksum(octoDesripto.c_str(), new char[5]);
 
 		// Begin sending octolegs through to the client socket.
 		//	Initiate by sending a file information packet that tells the receiver what to expect for data
@@ -185,28 +188,28 @@ int main(int argc, char** argv)
 		//			Condition variables would work well to wait on the incoming ACK
 
 
-		pthread_t *threads;
-		threads = new pthread_t[totalOctoblocksNeeded * 8];
-		long status;
-		long i;
-		for (i = 0; i < totalOctoblocksNeeded * 8; i++)
-		{
-			status = pthread_create(&threads[i], NULL, worker, (void *)i);
-			if (status != 0)
-			{
-				std::cout << "Creation of thread resulted in error.\n";
-				exit(-1);
-			}
-		}
+		//pthread_t *threads;
+		//threads = new pthread_t[totalOctoblocksNeeded * 8];
+		//long status;
+		//long i;
+		//for (i = 0; i < totalOctoblocksNeeded * 8; i++)
+		//{
+		//	status = pthread_create(&threads[i], NULL, worker, (void *)i);
+		//	if (status != 0)
+		//	{
+		//		std::cout << "Creation of thread resulted in error.\n";
+		//		exit(-1);
+		//	}
+		//}
 
 
 
-		for (i = 0; i < totalOctoblocksNeeded * 8; i++)
-			pthread_join(threads[i], NULL);
+		//for (i = 0; i < totalOctoblocksNeeded * 8; i++)
+		//	pthread_join(threads[i], NULL);
 
 
-		delete[] threads;
-		delete[] octoblocks;
+		//delete[] threads;
+		//delete[] octoblocks;
 	}
 	else
 	{

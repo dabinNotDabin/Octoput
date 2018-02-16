@@ -22,7 +22,7 @@ public:
 	bool bindSocket();
 
 
-	int computeChecksum(const char* data, char* destinationIP);
+	unsigned short computeChecksum(const char* data, const char* destinationIP);
 
 private:
 	Socket *UDPSocket;
@@ -30,7 +30,7 @@ private:
 
 	std::string constructHeader(char octolegFlag, short packetSize, const char* data);
 
-	short oneComplementSum(short i, short j);
+	unsigned short oneComplementSum(unsigned int k);
 
 };
 
