@@ -34,10 +34,14 @@ public:
 
 	bool addressIsInitialized();
 
+	int getFamily();
+
 private:
 	// ID assigned on initialization
 	int FD;
 	bool addressInitialized;
+
+	int fam;
 
 	// Socket address as maintained by OS
 	struct sockaddr_in socketAddress;

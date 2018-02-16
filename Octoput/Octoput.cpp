@@ -39,6 +39,12 @@ int main(int argc, char** argv)
 	std::ifstream in;
 	std::string fileContents;
 
+	
+	unsigned int serverPort = 12345;
+	unsigned int clientPort = 54321;
+
+
+
 	if (argc > 1 && argc < 4)
 	{
 		// No port specified
@@ -123,9 +129,11 @@ int main(int argc, char** argv)
 
 
 
-		UDPServer server;
-		UDPClient client;
+		UDPServer server(AF_INET, SOCK_DGRAM, IPPROTO_UDP, serverPort, clientPort);
+		UDPClient client(AF_INET, SOCK_DGRAM, IPPROTO_UDP, clientPort, serverPort);
 
+
+		
 
 		string octoDesripto =
 			"Number Of Full Octoblocks: " + to_string(octoMonocto.numFullOctoblocks) + "\r\n" +
@@ -136,7 +144,11 @@ int main(int argc, char** argv)
 		unsigned short checksum;
 
 		string testDestIP = "192.168.0.30";
-		checksum = server.computeChecksum("Hi", testDestIP.c_str());
+		clientPort = 10;
+		checksum = server.computeChecksum(octoDesripto.c_str(), testDestIP.c_str(), clientPort);
+
+		
+
 
 
 

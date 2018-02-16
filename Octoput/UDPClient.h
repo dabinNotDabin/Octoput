@@ -16,6 +16,9 @@ public:
 	~UDPClient();
 
 
+	UDPClient(short family, short type, short protocol, unsigned int port, unsigned int serverPort);
+
 private:
 	Socket* UDPSocket;
+	sockaddr_in serverAddress;
 };

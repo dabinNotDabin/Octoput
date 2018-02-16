@@ -13,23 +13,25 @@ public:
 	UDPServer();
 	~UDPServer();
 	
+	UDPServer(short family, short type, short protocol, unsigned int port, unsigned int clientPort);
+
 	// Associates <address> with <socketFD> and binds it.
 	bool bindSocket(int socketFD, struct sockaddr_in address);
 
 	//	Binds the default UDPSocket using the address associated with it.
-	//		The UDPSocket must be instantiated first so it is assigned a FD (see "Socket.h").
-	//		It uses the address associated with the UDPSocket.
+	//	The UDPSocket must be instantiated first so it is assigned a FD (see "Socket.h").
+	//	It uses the address associated with the UDPSocket.
 	bool bindSocket();
 
 
-	unsigned short computeChecksum(const char* data, const char* destinationIP);
+	unsigned short computeChecksum(const char* data, const char* destinationIP, unsigned int clientPort);
 
 private:
 	Socket *UDPSocket;
+	sockaddr_in clientAddress;
 
 
 	std::string constructHeader(char octolegFlag, short packetSize, const char* data);
-
 	unsigned short oneComplementSum(unsigned int k);
 
 };

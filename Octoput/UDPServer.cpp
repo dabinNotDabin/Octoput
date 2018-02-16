@@ -13,14 +13,33 @@ UDPServer::UDPServer()
 
 UDPServer::~UDPServer()
 {
-//	close(UDPSocket->getFD());
+	close(UDPSocket->getFD());
 
-//	if (UDPSocket != NULL)
-//		delete UDPSocket;
+	if (UDPSocket != NULL)
+		delete UDPSocket;
 }
 
 
+// Note that this is configured to use the local host IP and the given family for the client's address.
+UDPServer::UDPServer(short family, short type, short protocol, unsigned int port, unsigned int clientPort)
+{
+	UDPSocket = new Socket();
 
+	if (!UDPSocket->initSocket(family, type, protocol))
+	{
+		cout << "Failure initializing socket with <family>, <type>, and <protocol>.\n";
+		UDPServer();
+	}
+	else
+	{
+		UDPSocket->associateAddress(port);
+		bindSocket();
+
+		clientAddress.sin_family = family;
+		clientAddress.sin_port = htons(clientPort);
+		inet_pton(AF_INET, "127.0.0.1", &clientAddress.sin_addr);
+	}
+}
 
 
 
@@ -106,7 +125,7 @@ std::string UDPServer::constructHeader(char octolegFlag, short packetSize, const
 }
 
 
-unsigned short UDPServer::computeChecksum(const char* data, const char* destinationIP)
+unsigned short UDPServer::computeChecksum(const char* data, const char* destinationIP, unsigned int clientPort)
 {
 	struct sockaddr_in serverAddress;
 	char* sourceIP;	
@@ -207,13 +226,14 @@ unsigned short UDPServer::computeChecksum(const char* data, const char* destinat
 
 
 	// Begin Src Port
+	i = serverAddress.sin_port;
 	i = 20;
 	sum = sum + i;
 	cout << "SUM: " << sum << endl;
 	// End Src Port
 
 	// Begin Dst Port
-	i = 10;
+	i = clientPort;
 	sum = sum + i;
 	cout << "SUM: " << sum << endl;
 	// End Dst Port
@@ -234,15 +254,15 @@ unsigned short UDPServer::computeChecksum(const char* data, const char* destinat
 	{
 		c = data[x];
 		i = (unsigned short)c;
-		cout << "I: " << i << endl;
+//		cout << "I: " << i << endl;
 
 		c = data[x+1];
-		cout << "I: " << (unsigned short)c << endl;
+//		cout << "I: " << (unsigned short)c << endl;
 		i = (i << 8) | (unsigned short)c;
-		cout << "I: " << i << endl;
+//		cout << "I: " << i << endl;
 
 		sum = sum + i;
-		cout << "SUM: " << sum << endl;
+//		cout << "SUM: " << sum << endl;
 	}
 
 	
