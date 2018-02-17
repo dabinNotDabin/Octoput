@@ -25,6 +25,7 @@ public:
 
 	int getSocketFD();
 	struct sockaddr_in getClientAddress();
+	struct sockaddr_in getAddress();
 
 	// Initiate file transfer.
 	void commenceOctovation();
@@ -60,6 +61,9 @@ private:
 	void instantiateOctoMonocto();
 	void instantiateOctoblocks();
 
+
+
+	unsigned short computeChecksum(const char* data, const char* clientIP, unsigned int clientPort);
 };
 
 

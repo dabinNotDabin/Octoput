@@ -19,7 +19,9 @@ public:
 	UDPClient(short family, short type, short protocol, unsigned int port, unsigned int serverPort);
 
 	int getSocketFD();
+	bool bindSocket();
 	struct sockaddr_in getServerAddress();
+	struct sockaddr_in getAddress();
 
 
 	void commenceOctovation();
@@ -36,7 +38,8 @@ private:
 	string askUserForFilename();
 	bool validateMessage(const char* data, int dataLen);
 	bool validateChecksum(const char* data);
-	bool parseOctoDescripto(string octoDescripto);
+	bool parseOctoDescripto(const unsigned char* octoDescripto);
 
 
+	unsigned short computeChecksum(const char* data, const char* serverIP, unsigned int serverPort);
 };

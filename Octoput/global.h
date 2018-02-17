@@ -22,8 +22,6 @@
 #include <map>
 
 
-
-unsigned short computeChecksum(const char* data, const char* destinationIP, unsigned int clientPort);
 unsigned short oneComplementSum(unsigned int k);
 
 
