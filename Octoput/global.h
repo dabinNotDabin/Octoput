@@ -29,6 +29,7 @@ unsigned short oneComplementSum(unsigned int k);
 
 struct OctoMonocto
 {
+	short totalFileSize;
 	short numFullOctoblocks;
 	short partialOctoblockSize;
 	short partialOctolegSize;

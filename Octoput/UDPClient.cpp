@@ -11,10 +11,11 @@ UDPClient::UDPClient()
 
 UDPClient::~UDPClient()
 {
-	close(UDPSocket->getFD());
-
 	if (UDPSocket != NULL)
+	{
+		close(UDPSocket->getFD());
 		delete UDPSocket;
+	}
 }
 
 
@@ -52,27 +53,72 @@ UDPClient::UDPClient(short family, short type, short protocol, unsigned int port
 
 
 
-void UDPClient::commenceOctovation(UDPServer& s)
+void UDPClient::commenceOctovation()
 {
-	string filenameOK = askUserForFilename(s);
+	string filenameOK = askUserForFilename();
+	int nBytesRcvd;
+	char rcvMssg[1200];
 
-	
-	if (filenameOK == "\0")
+	if (filenameOK.compare("\0") == 0)
 	{
 		cout << "File query unsuccessful..exiting.\n";
-		exit(0);
+		return;
 	}
 
-	cout << "Confirmed.\n";
+	// Receive Octo Descripto.
+	nBytesRcvd = recvfrom
+	(
+		UDPSocket->getFD(),
+		rcvMssg,
+		1200,
+		0,
+		serverAddressPtr,
+		&serverAddressLen
+	);
+
+	if (nBytesRcvd == -1)
+	{
+		cout << "Failure receiving Octo Descripto.. exiting.\n";
+		return;
+	}
+
+	cout << "Octo Descripto Received: ";
+	rcvMssg[nBytesRcvd] = '\0';
+	for (int i = 0; i < nBytesRcvd; i++)
+		cout << rcvMssg[i];
+	cout << endl;
+
+
+
+	// Build Octo Monocto.
+	bool octoDescriptoOk = parseOctoDescripto(string(rcvMssg));
+
+	cout << "Octo Descripto received " << (octoDescriptoOk ? "OK.\n" : "NOT OK.\n");
+
+	if (octoDescriptoOk)
+	{
+		cout
+			<< "Total Size Of File: " << octoMonocto.totalFileSize << endl
+			<< "Number Of Full Octoblocks: " << octoMonocto.numFullOctoblocks << endl
+			<< "Size Of Partial Octoblock: " << octoMonocto.partialOctoblockSize << endl
+			<< "Size Of Partial Octolegs: " << octoMonocto.partialOctolegSize << endl
+			<< "Size Of Leftover Data: " << octoMonocto.leftoverDataSize << endl;
+
+		
+
+	}
+
+	return;
 }
 
 
 
 
-string UDPClient::askUserForFilename(UDPServer& s)
+string UDPClient::askUserForFilename()
 {
 	int nBytesRcvd;
 	string filename;
+	string confirmationStr;
 	char confirmation[23];
 
 	cout << "Enter the name of the file you would like to receive: ";
@@ -91,36 +137,6 @@ string UDPClient::askUserForFilename(UDPServer& s)
 	cout << "Sent.\n";
 
 
-	// Server receive	
-	char fname[276];
-	cout << "Received.\n";
-
-	nBytesRcvd = recvfrom
-	(
-		s.UDPSocket->getFD(),
-		fname,
-		276,
-		0,
-		s.clientAddressPtr,
-		&(s.clientAddressLen)
-	);
-
-
-	// Probably wanna check that nBytesReceived correlates with value in header
-	if (nBytesRcvd == -1)
-	{
-		cout << "Failure.\n";
-		return '\0';
-	}
-
-	fname[nBytesRcvd + 1] = '\0';
-	cout << "Filename Received: ";
-	for (int i = 0; i < nBytesRcvd; i++)
-		cout << fname[i];
-	cout << endl;
-
-
-
 	nBytesRcvd = recvfrom
 	(
 		UDPSocket->getFD(),
@@ -132,17 +148,19 @@ string UDPClient::askUserForFilename(UDPServer& s)
 	);
 
 	cout << "Confirmation Received: ";
+	confirmation[nBytesRcvd] = '\0';
 	for (int i = 0; i < nBytesRcvd; i++)
 		cout << confirmation[i];
 	cout << endl;
 
 	if (nBytesRcvd == -1)
 	{
-		cout << "Failure.\n";
+		cout << "Failure receiving confirmation, try again or try another file.\n";
 		return '\0';
 	}
 
-	while (!(strncmp(confirmation, "OK", 4) == 0))
+	confirmationStr = string(confirmation);
+	while (confirmationStr.compare("OK") != 0)
 	{
 		cout << "Enter the name of the file you would like to receive: ";
 		cin >> filename;
@@ -167,6 +185,7 @@ string UDPClient::askUserForFilename(UDPServer& s)
 			&serverAddressLen
 		);
 
+		confirmation[nBytesRcvd] = '\0';
 		for (int i = 0; i < nBytesRcvd; i++)
 			cout << confirmation[i];
 		cout << endl;
@@ -177,10 +196,143 @@ string UDPClient::askUserForFilename(UDPServer& s)
 			return '\0';
 	}
 
-	if (strncmp(confirmation, "OK", 4) == 0)
+	if (confirmationStr.compare("OK") != 0)
 		return '\0';
 	else
-		return confirmation;
+		return confirmationStr;
+}
+
+
+
+bool UDPClient::parseOctoDescripto(string octoDescripto)
+{
+	int posA;
+	int posB;
+	string worker;
+
+	posA = octoDescripto.find("Total Size Of File: ", 0);
+
+	if (posA != std::string::npos)
+	{
+		octoDescripto = octoDescripto.substr(posA + 20);
+
+		posB = octoDescripto.find("\r\n");
+
+		if (posB != std::string::npos)
+			octoMonocto.totalFileSize = (short)atoi((octoDescripto.substr(0, posB)).c_str());
+		else
+		{
+			cout << "octoDescripto missing \"\r\n\" after total file size tag.\n";
+			return false;
+		}
+	}
+	else
+	{
+		cout << "OctoDescripto missing total size of file information.\n";
+		return false;
+	}
+
+
+	
+	cout << "OctoDescripto: " << octoDescripto << endl;
+	posA = octoDescripto.find("Number Of Full Octoblocks: ", 0);
+
+	if (posA != std::string::npos)
+	{
+		octoDescripto = octoDescripto.substr(posA + 27);
+
+		posB = octoDescripto.find("\r\n");
+
+		if (posB != std::string::npos)
+			octoMonocto.numFullOctoblocks = (short)atoi((octoDescripto.substr(0, posB)).c_str());
+		else
+		{
+			cout << "octoDescripto missing \"\r\n\" after num full octoblocks tag.\n";
+			return false;
+		}
+	}
+	else
+	{
+		cout << "OctoDescripto missing informatio on num full octoblocks required.\n";
+		return false;
+	}
+
+
+
+	cout << "OctoDescripto: " << octoDescripto << endl;
+	posA = octoDescripto.find("Size Of Partial Octoblock: ", 0);
+
+	if (posA != std::string::npos)
+	{
+		octoDescripto = octoDescripto.substr(posA + 27);
+
+		posB = octoDescripto.find("\r\n");
+
+		if (posB != std::string::npos)
+			octoMonocto.partialOctoblockSize = (short)atoi((octoDescripto.substr(0, posB)).c_str());
+		else
+		{
+			cout << "octoDescripto missing \"\r\n\" after size of partial octoblock tag.\n";
+			return false;
+		}
+	}
+	else
+	{
+		cout << "OctoDescripto missing partial octoblock size information.\n";
+		return false;
+	}
+
+
+
+	cout << "OctoDescripto: " << octoDescripto << endl;
+	posA = octoDescripto.find("Size Of Partial Octolegs: ", 0);
+
+	if (posA != std::string::npos)
+	{
+		octoDescripto = octoDescripto.substr(posA + 26);
+
+		posB = octoDescripto.find("\r\n");
+
+		if (posB != std::string::npos)
+			octoMonocto.partialOctolegSize = (short)atoi((octoDescripto.substr(0, posB)).c_str());
+		else
+		{
+			cout << "octoDescripto missing \"\r\n\" after partial octoleg size tag.\n";
+			return false;
+		}
+	}
+	else
+	{
+		cout << "OctoDescripto missing partial octoleg size information.\n";
+		return false;
+	}
+
+
+
+	cout << "OctoDescripto: " << octoDescripto << endl;
+	posA = octoDescripto.find("Size Of Leftover Data: ", 0);
+
+	if (posA != std::string::npos)
+	{
+		octoDescripto = octoDescripto.substr(posA + 23);
+
+		posB = octoDescripto.find("\r\n");
+
+		if (posB != std::string::npos)
+			octoMonocto.leftoverDataSize = (short)atoi((octoDescripto.substr(0, posB)).c_str());
+		else
+		{
+			cout << "octoDescripto missing \"\r\n\" after leftover data size tag.\n";
+			return false;
+		}
+	}
+	else
+	{
+		cout << "OctoDescripto missing leftover data size information.\n";
+		return false;
+	}
+
+	return true;
 }
 
 

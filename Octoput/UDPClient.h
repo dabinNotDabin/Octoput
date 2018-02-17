@@ -22,7 +22,7 @@ public:
 	struct sockaddr_in getServerAddress();
 
 
-	void commenceOctovation(UDPServer& s);
+	void commenceOctovation();
 
 private:
 	Socket* UDPSocket;
@@ -30,10 +30,13 @@ private:
 	struct sockaddr* serverAddressPtr = (struct sockaddr*)&serverAddress;
 	int serverAddressLen = sizeof(*serverAddressPtr);
 
+	OctoMonocto octoMonocto;
 
-	string askUserForFilename(UDPServer& s);
+
+	string askUserForFilename();
 	bool validateMessage(const char* data, int dataLen);
 	bool validateChecksum(const char* data);
+	bool parseOctoDescripto(string octoDescripto);
 
-	UDPServer server;
+
 };

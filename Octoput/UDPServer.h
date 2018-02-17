@@ -29,17 +29,12 @@ public:
 	// Initiate file transfer.
 	void commenceOctovation();
 
+
+private:
 	Socket *UDPSocket;
 	struct sockaddr_in clientAddress;
 	struct sockaddr* clientAddressPtr = (struct sockaddr*)&clientAddress;
 	int clientAddressLen = sizeof(*clientAddressPtr);
-
-
-private:
-	//Socket *UDPSocket;
-	//struct sockaddr_in clientAddress;
-	//struct sockaddr* clientAddressPtr = (struct sockaddr*)&clientAddress;
-	//int clientAddressLen = sizeof(*clientAddressPtr);
 
 	OctoMonocto octoMonocto;
 

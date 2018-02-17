@@ -20,53 +20,86 @@ int main(int argc, char** argv)
 	unsigned int clientPort = 54321;
 
 
-	int port;
-	string filename;
+	string serverClientChoice;
 
 	ifstream in;
 	string fileContents;
 
 
-	if (argc > 1 && argc < 4)
+	//if (argc > 2 && argc < 4)
+	//{
+	//	// Change so client sends file request.
+	//	//		Server port and Client port are taken as command line args.
+	//	if (argc == 2)
+	//	{
+	//		
+	//		filename = argv[1];
+	//	}
+	//	else
+	//	{
+	//		port = atoi(argv[1]);
+	//		filename = argv[2];
+	//	}
+
+
+	//	in.open(filename);
+	//	getline(in, fileContents, '\0');
+	//	in.close();
+
+
+	if (argc == 2)
 	{
-		// Change so client sends file request.
-		//		Server port and Client port are taken as command line args.
-		if (argc == 2)
+
+		serverClientChoice = string(argv[1]);
+
+
+		while
+			(
+				(serverClientChoice.compare("server") != 0) &&
+				(serverClientChoice.compare("client") != 0) &&
+				(serverClientChoice.compare("quit") != 0) 
+			)
 		{
-			port = 12345;
-			filename = argv[1];
+			cout
+				<< "Command \"" << serverClientChoice << "\" is not valid.\n"
+				<< "Enter \"server\" to run the server side or \"client\" to run the client side.\n"
+				<< "Enter \"quit\" to exit.\n";
+
+			cin >> serverClientChoice;
+		}
+
+
+		if (serverClientChoice.compare("server") == 0)
+		{
+			// If successful, the server owns a bound socket and is ready to send and receive
+			UDPServer server(AF_INET, SOCK_DGRAM, IPPROTO_UDP, serverPort, clientPort);
+			server.commenceOctovation();
+
+			cout << "Exiting Server Program.\n";
+		}
+		else if (serverClientChoice.compare("client") == 0)
+		{
+			// If successful, the client owns a socket and is ready to send and receive
+			UDPClient client(AF_INET, SOCK_DGRAM, IPPROTO_UDP, clientPort, serverPort);
+			client.commenceOctovation();
+
+			cout << "Exiting Client Program.\n";
 		}
 		else
 		{
-			port = atoi(argv[1]);
-			filename = argv[2];
+			return 0;
 		}
-
-
-		in.open(filename);
-		getline(in, fileContents, '\0');
-		in.close();
-
-
-
-		// If successful, the server owns a bound socket and is ready to send and receive
-		UDPServer server(AF_INET, SOCK_DGRAM, IPPROTO_UDP, serverPort, clientPort);
-
-		// If successful, the client owns a socket and is ready to send and receive
-		UDPClient client(AF_INET, SOCK_DGRAM, IPPROTO_UDP, clientPort, serverPort);
 
 		
 
 
-		unsigned short checksum;
+		//unsigned short checksum;
 
-		string testDestIP = "192.168.0.30";
-		clientPort = 10;
-		checksum = computeChecksum("Hi", testDestIP.c_str(), clientPort);
+		//string testDestIP = "192.168.0.30";
+		//clientPort = 10;
+		//checksum = computeChecksum("Hi", testDestIP.c_str(), clientPort);
 
 
-		client.commenceOctovation(server);
-//		server.commenceOctovation();
 		
 
 		//char mssg[1131]; //max octoleg size 1111 + 20 for udp header and pseudo header
@@ -153,9 +186,9 @@ int main(int argc, char** argv)
 	{
 		cout
 			<< "Usage: \n"
-			<< "\tOctoput <port#> <filename>\n"
+			<< "\tOctoput <\"server\">\n"
 			<< "\t\tOR\n"
-			<< "\tOctoput <filename>\tport is default to 12345.\n";
+			<< "\tOctoput <\"client\">\n";
 	}
 
     return 0;

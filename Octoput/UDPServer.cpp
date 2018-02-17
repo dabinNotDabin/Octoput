@@ -13,10 +13,14 @@ UDPServer::UDPServer()
 
 UDPServer::~UDPServer()
 {
-	close(UDPSocket->getFD());
-
 	if (UDPSocket != NULL)
+	{
+		close(UDPSocket->getFD());
 		delete UDPSocket;
+	}
+
+	if (octoblocks != NULL)
+		delete[] octoblocks;
 }
 
 
@@ -130,13 +134,28 @@ void UDPServer::commenceOctovation()
 {	
 	string filename = getFileRequest();
 	string octoDescripto;
+	string confirmation = "OK";
 
-	if (filename == "\0")
+	cout << "Filename good.\n";
+
+	if (filename.compare("\0") == 0)
 	{
 		cout << "Receive filename unsuccessful..exiting.\n";
 		exit(0);
 	}
-
+	else
+	{
+		cout << "Sending confirmation.\n";
+		sendto
+		(
+			UDPSocket->getFD(),
+			confirmation.c_str(),
+			confirmation.length(),
+			0,
+			clientAddressPtr,
+			clientAddressLen
+		);
+	}
 
 	in.open(filename);
 	getline(in, fileContents, '\0');
@@ -178,6 +197,7 @@ void UDPServer::commenceOctovation()
 std::string UDPServer::getFileRequest()
 {
 	int nBytesRcvd;
+	string filenameStr;
 	char filename[276];
 	cout << "Received.\n";
 
@@ -199,16 +219,20 @@ std::string UDPServer::getFileRequest()
 		return '\0';
 	}
 
-	filename[nBytesRcvd + 1] = '\0';
+	filename[nBytesRcvd] = '\0';
 	cout << "Filename Received: ";
 	for (int i = 0; i < nBytesRcvd; i++)
 		cout << filename[i];
-	cout << endl;
-
-	in.open(filename);
+	cout << " of length: " << nBytesRcvd << endl;
 
 
-	while (!(strncmp(filename, "quit", 4) == 0) && !in.good())
+	filenameStr = string(filename);
+	in.open(filenameStr);
+
+	if (!in.good())
+		cout << "File not good.\n";
+
+	while ((filenameStr.compare("quit") != 0) && !in.good())
 	{
 		in.close();
 
@@ -226,7 +250,7 @@ std::string UDPServer::getFileRequest()
 		if (nBytesRcvd == -1)
 			return '\0';
 
-		filename[nBytesRcvd + 1] = '\0';
+		filename[nBytesRcvd] = '\0';
 		cout << "Filename Received: ";
 		for (int i = 0; i < nBytesRcvd; i++)
 			cout << filename[i];
@@ -237,10 +261,11 @@ std::string UDPServer::getFileRequest()
 
 	in.close();
 
-	if (strncmp(filename, "quit", 4) == 0)
+	filenameStr = string(filename);
+	if (filenameStr.compare("quit") == 0)
 		return '\0';
 	else
-		return filename;
+		return filenameStr;
 }
 
 
@@ -272,6 +297,7 @@ void UDPServer::instantiateOctoMonocto()
 
 	octoMonocto =
 	{
+		(short)fileContents.length(),
 		(short)numFullOctoblocksNeeded,
 		(short)partialOctoblockSize,
 		(short)partialOctolegSize,
@@ -285,7 +311,6 @@ void UDPServer::instantiateOctoMonocto()
 void UDPServer::instantiateOctoblocks()
 {
 	octoblocks = new std::string[totalOctoblocksNeeded];
-	octoblocks = new std::string[10000000];
 
 	// Divide file contents into octoblocks and store in array, padding leftover data if necessary.
 	for (int i = 0; i < totalOctoblocksNeeded; i++)
