@@ -15,7 +15,7 @@ UDPClient::~UDPClient()
 	if (UDPSocket != NULL)
 	{
 		close(UDPSocket->getFD());
-		delete UDPSocket;
+//		delete UDPSocket;
 	}
 }
 
@@ -118,7 +118,7 @@ void UDPClient::commenceOctovation()
 {
 	string filenameOK = askUserForFilename();
 	int nBytesRcvd;
-	char rcvMssg[1200];
+	unsigned char rcvMssg[1200];
 	unsigned short rcvdChecksum;
 	unsigned short checksum;
 
@@ -156,25 +156,28 @@ void UDPClient::commenceOctovation()
 	rcvdChecksum = ((rcvMssg[6] << 8) | rcvMssg[7]);
 	cout << "Received Checksum: " << rcvdChecksum << endl;
 
-	checksum = computeChecksum((unsigned char*)rcvMssg, inet_ntoa(serverAddress.sin_addr), serverAddress.sin_port);
+	checksum = computeChecksum(rcvMssg, inet_ntoa(serverAddress.sin_addr), serverAddress.sin_port);
 	cout << "Checksum Computed: " << checksum << endl;
 
-	// While checksum not valid || parse NOT OK, receive message -- parse should be OK if checksum valid.
+	if (checksum == rcvdChecksum)
+		sendAck(0);
 
-	// Build Octo Monocto.
-	bool octoDescriptoOk = parseOctoDescripto((unsigned char*)rcvMssg);
+	//// While checksum not valid || parse NOT OK, receive message -- parse should be OK if checksum valid.
 
-	cout << "Octo Descripto parsed " << (octoDescriptoOk ? "OK.\n" : "NOT OK.\n");
+	//// Build Octo Monocto.
+	//bool octoDescriptoOk = parseOctoDescripto(rcvMssg);
 
-	if (octoDescriptoOk)
-	{
-		cout
-			<< "Total Size Of File: " << octoMonocto.totalFileSize << endl
-			<< "Number Of Full Octoblocks: " << octoMonocto.numFullOctoblocks << endl
-			<< "Size Of Partial Octoblock: " << octoMonocto.partialOctoblockSize << endl
-			<< "Size Of Partial Octolegs: " << octoMonocto.partialOctolegSize << endl
-			<< "Size Of Leftover Data: " << octoMonocto.leftoverDataSize << endl;
-	}
+	//cout << "Octo Descripto parsed " << (octoDescriptoOk ? "OK.\n" : "NOT OK.\n");
+
+	//if (octoDescriptoOk)
+	//{
+	//	cout
+	//		<< "Total Size Of File: " << octoMonocto.totalFileSize << endl
+	//		<< "Number Of Full Octoblocks: " << octoMonocto.numFullOctoblocks << endl
+	//		<< "Size Of Partial Octoblock: " << octoMonocto.partialOctoblockSize << endl
+	//		<< "Size Of Partial Octolegs: " << octoMonocto.partialOctolegSize << endl
+	//		<< "Size Of Leftover Data: " << octoMonocto.leftoverDataSize << endl;
+	//}
 
 
 
@@ -184,12 +187,141 @@ void UDPClient::commenceOctovation()
 
 
 
+bool UDPClient::sendAck(unsigned char id)
+{
+	unsigned char ack[ACK_SIZE_BYTES + 1];
+
+	ack[0] = id;
+	ack[1] = '\0';
+	attachHeader('\0', 1, ack);
+
+	sendto
+	(
+		UDPSocket->getFD(),
+		ack,
+		ACK_SIZE_BYTES,
+		0,
+		(const sockaddr*)(&serverAddress),
+		sizeof(serverAddress)
+	);
+}
+
+
+
+
+// data must be null terminated
+void UDPClient::attachHeader(unsigned char octolegFlag, unsigned short payloadSize, unsigned char* data)
+{
+	struct sockaddr_in clientAddress;
+	unsigned short serverPort;
+	unsigned short clientPort;
+	unsigned short packetLen;
+	unsigned short checksum;
+	unsigned char firstHalf;
+	unsigned char secondHalf;
+	unsigned char* header = new unsigned char[9];
+
+
+
+	UDPSocket->getAddress(clientAddress);
+
+	// Client Port
+	clientPort = clientAddress.sin_port;
+	cout << "ClientPort: " << clientAddress.sin_port << endl;
+	firstHalf = clientPort >> 8;
+	secondHalf = clientPort & 0xFF;
+
+	header[0] = firstHalf;
+	header[1] = secondHalf;
+
+
+	// Server Port
+	serverPort = serverAddress.sin_port;
+	cout << "ServerPort: " << serverPort << endl;
+	cout << "Server IP: " << inet_ntoa(serverAddress.sin_addr) << endl;
+	firstHalf = serverPort >> 8;
+	secondHalf = serverPort & 0xFF;
+
+	header[2] = firstHalf;
+	header[3] = secondHalf;
+
+
+	// Packet Len
+	//	if (octolegFlag == NULL)
+	packetLen = payloadSize + HEADER_SIZE_BYTES;
+	//	else
+	//		packetLen = (unsigned short)octolegFlag;
+
+	cout << "Packet Len: " << packetLen << endl;
+	firstHalf = packetLen >> 8;
+	secondHalf = packetLen & 0xFF;
+
+	cout << "Packet Len First Half: " << (int)firstHalf << endl;
+	cout << "Packet Len Secnd Half: " << (int)secondHalf << endl;
+	header[4] = firstHalf;
+	header[5] = secondHalf;
+
+
+	//	cout << "Client IP: " << inet_ntoa(clientAddress.sin_addr) << endl;
+
+
+	string dataStr((char*)data);
+
+	header[6] = header[7] = 0;
+	memcpy(data, header, HEADER_SIZE_BYTES);
+	memcpy(data + HEADER_SIZE_BYTES, dataStr.c_str(), dataStr.length());
+
+
+	// Checksum
+	checksum = computeChecksum
+	(
+		(unsigned char*)data,
+		inet_ntoa(serverAddress.sin_addr),
+		(unsigned int)(serverAddress.sin_port)
+	);
+
+	cout << "Checksum in Client attachHeader(): " << checksum << endl;
+
+	firstHalf = checksum >> 8;
+	secondHalf = checksum & 0xFF;
+
+	header[6] = firstHalf;
+	header[7] = secondHalf;
+
+	cout << "Checksum First Half: " << (int)header[6] << endl;
+	cout << "Checksum Secnd Half: " << (int)header[7] << endl;
+
+
+	memcpy(data + 6, header + 6, 2);
+	
+
+	cout << "Checksum First Half: " << (int)data[6] << endl;
+	cout << "Checksum Secnd Half: " << (int)data[7] << endl;
+
+
+	header[8] = '\0';
+
+
+	for (int i = 0; i < 9; i++)
+	{
+		cout << "Index: " << i << " = " << (unsigned int)header[i] << endl;
+	}
+
+
+//	delete[] header;
+}
+
+
+
+
+
+
 string UDPClient::askUserForFilename()
 {
 	int nBytesRcvd;
 	string filename;
 	string confirmationStr;
-	char confirmation[23];
+	unsigned char confirmation[23];
 
 	cout << "Enter the name of the file you would like to receive: ";
 	cin >> filename;
@@ -231,7 +363,7 @@ string UDPClient::askUserForFilename()
 		return '\0';
 	}
 
-	confirmationStr = string(confirmation);
+	confirmationStr = string((char*)confirmation);
 	while (confirmationStr.compare("OK") != 0)
 	{
 		cout << "Enter the name of the file you would like to receive: ";
@@ -267,6 +399,8 @@ string UDPClient::askUserForFilename()
 
 		if (nBytesRcvd == -1)
 			return '\0';
+
+		confirmationStr = string((char*)confirmation);
 	}
 
 	if (confirmationStr.compare("OK") != 0)
@@ -284,7 +418,7 @@ bool UDPClient::parseOctoDescripto(const unsigned char* octoDescripto)
 	unsigned short packetLen;
 	unsigned short field;
 	string worker;
-	char* octoDescriptoNoHeader;
+	unsigned char* octoDescriptoNoHeader;
 	string octoDescriptoStr;
 
 
@@ -298,11 +432,13 @@ bool UDPClient::parseOctoDescripto(const unsigned char* octoDescripto)
 	cout << "Checksum: " << field << endl;
 
 
-	octoDescriptoNoHeader = new char[packetLen - 7];
+	octoDescriptoNoHeader = new unsigned char[packetLen - 7];
 	memcpy(octoDescriptoNoHeader, octoDescripto + HEADER_SIZE_BYTES, packetLen - 7);
 
 //	octoDescriptoNoHeader[packetLen - HEADER_SIZE_BYTES] = '\0';
-	octoDescriptoStr = string(octoDescriptoNoHeader);
+	octoDescriptoStr = string((char*)octoDescriptoNoHeader);
+
+//	delete[] octoDescriptoNoHeader;
 
 	posA = octoDescriptoStr.find("Total Size Of File: ", 0);
 	if (posA != std::string::npos)
@@ -425,25 +561,10 @@ bool UDPClient::parseOctoDescripto(const unsigned char* octoDescripto)
 		return false;
 	}
 
+
+
 	return true;
 }
-
-
-
-bool UDPClient::validateMessage(const char* data, int dataLen)
-{
-
-}
-
-
-
-bool UDPClient::validateChecksum(const char* data)
-{
-
-}
-
-
-
 
 
 

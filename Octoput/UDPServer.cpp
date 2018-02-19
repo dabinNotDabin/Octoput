@@ -20,8 +20,8 @@ UDPServer::~UDPServer()
 		delete UDPSocket;
 	}
 
-	if (octoblocks != NULL)
-		delete[] octoblocks;
+//	if (octoblocks != NULL)
+//		delete[] octoblocks;
 }
 
 
@@ -156,7 +156,7 @@ void UDPServer::commenceOctovation()
 	string filename = getFileRequest();
 	string octoDescripto;
 	string confirmation = "OK";
-	string headerStr;
+
 	unsigned char sendMssg[1200];
 
 //	struct sockaddr_in serverAddress;
@@ -193,8 +193,6 @@ void UDPServer::commenceOctovation()
 	instantiateOctoMonocto();
 	instantiateOctoblocks();
 
-//	UDPSocket->getAddress(serverAddress);
-
 	
 	octoDescripto =
 		"Total Size Of File: " + to_string(fileContents.length()) + "\r\n" +
@@ -205,38 +203,12 @@ void UDPServer::commenceOctovation()
 
 //	cout << "Server Port: " << ntohs(serverAddress.sin_port) << endl;
 
-	// Not right because string versions of these quantities will be 1 byte per digit.
-	// not sure on the use of ntohs
 
-
-//	headerStr = constructHeader('0', octoDescripto.length(), octoDescripto.c_str());
-
-//	cout << "Header Str: " << headerStr << endl;
-
-//	memcpy(sendMssg, headerStr.c_str(), HEADER_SIZE_BYTES);
 	memcpy(sendMssg, octoDescripto.c_str(), octoDescripto.length());
 	sendMssg[octoDescripto.length()] = '\0';
-	attachHeader('\0', octoDescripto.length(), (char*)sendMssg);
+	attachHeader('\0', octoDescripto.length(), sendMssg);
 
 
-
-
-//	cout << "Octo Descripto being sent as:\n";
-//	for (int i = 0; i < packetLen; i++)
-//	{
-//		cout << "Index: " << i << " = " << (unsigned int)sendMssg[i] << endl;
-//	}
-
-
-	sendto
-	(
-		UDPSocket->getFD(),
-		sendMssg,
-		octoDescripto.length() + HEADER_SIZE_BYTES,
-		0,
-		clientAddressPtr,
-		clientAddressLen
-	);
 
 /*
 	pthread_mutex_t queueMutex;
@@ -264,21 +236,33 @@ void UDPServer::commenceOctovation()
 
 //	sleep(1);
 
-	usleep(100000); // 100 000 usec = 100 msec
 
-
+	int sleepTimeMsec = 100000; // 100 000 usec = 100 msec
 	int nBytesRcvd;
 	unsigned short checksum;
 	unsigned short rcvdChecksum;
 	string ackStr;
-	char ack[32];
+	unsigned char ack[ACK_SIZE_BYTES + 1];
 	bool ackOK = false;
 
+	sendto
+	(
+		UDPSocket->getFD(),
+		sendMssg,
+		octoDescripto.length() + HEADER_SIZE_BYTES,
+		0,
+		clientAddressPtr,
+		clientAddressLen
+	);
+
+	usleep(sleepTimeMsec); 
+
+	memset(ack, 0, ACK_SIZE_BYTES);
 	nBytesRcvd = recvfrom
 	(
 		UDPSocket->getFD(),
 		ack,
-		32,
+		ACK_SIZE_BYTES,
 		0,
 		clientAddressPtr,
 		&clientAddressLen
@@ -286,40 +270,51 @@ void UDPServer::commenceOctovation()
 	
 	while (!ackOK)
 	{
-		if (nBytesRcvd == -1)
+		rcvdChecksum = ((ack[6] << 8) | ack[7]);
+		cout << "Received ACK Checksum: " << rcvdChecksum << endl;
+
+		ack[nBytesRcvd] = '\0';
+		cout << "ACK Received: ";
+		for (int i = 0; i < nBytesRcvd; i++)
+			cout << ack[i];
+		cout << " of length: " << nBytesRcvd << endl;
+	
+		checksum = computeChecksum((unsigned char*)ack, inet_ntoa(clientAddress.sin_addr), clientAddress.sin_port);
+		cout << "ACK Checksum Computed: " << checksum << endl;
+
+		if (checksum == rcvdChecksum)
 		{
-			cout << "No ACK received.\n";
+			cout << "Ack OK.\n";
+			ackOK = true;
 		}
 		else
 		{
-			rcvdChecksum = ((ack[6] << 8) | ack[7]);
-			cout << "Received Checksum: " << rcvdChecksum << endl;
-			
-			ack[nBytesRcvd] = '\0';
-			cout << "ACK Received: ";
-			for (int i = 0; i < nBytesRcvd; i++)
-				cout << ack[i];
-			cout << " of length: " << nBytesRcvd << endl;
+			sendto
+			(
+				UDPSocket->getFD(),
+				sendMssg,
+				octoDescripto.length() + HEADER_SIZE_BYTES,
+				0,
+				clientAddressPtr,
+				clientAddressLen
+			);
 
-			checksum = computeChecksum((unsigned char*)ack, inet_ntoa(clientAddress.sin_addr), clientAddress.sin_port);
-			cout << "Checksum Computed: " << checksum << endl;
+			usleep(sleepTimeMsec);
 
-			if (checksum == rcvdChecksum)
-				ackOK = true;
-			else
-			{
-				sendto
-				(
-					UDPSocket->getFD(),
-					sendMssg,
-					octoDescripto.length() + HEADER_SIZE_BYTES,
-					0,
-					clientAddressPtr,
-					clientAddressLen
-				);
-			}
+			memset(ack, 0, ACK_SIZE_BYTES);
+			nBytesRcvd = recvfrom
+			(
+				UDPSocket->getFD(),
+				ack,
+				ACK_SIZE_BYTES,
+				0,
+				clientAddressPtr,
+				&clientAddressLen
+			);
+
 		}
 	}
+
 	// Start timer, when expired, try to receive ack.
 	// While invalid or not received, resend octo descripto.
 	
@@ -336,7 +331,7 @@ std::string UDPServer::getFileRequest()
 {
 	int nBytesRcvd;
 	string filenameStr;
-	char filename[276];
+	unsigned char filename[276];
 	cout << "Received.\n";
 
 	nBytesRcvd = recvfrom
@@ -364,7 +359,7 @@ std::string UDPServer::getFileRequest()
 	cout << " of length: " << nBytesRcvd << endl;
 
 
-	filenameStr = string(filename);
+	filenameStr = string((char*)filename);
 	in.open(filenameStr);
 
 	if (!in.good())
@@ -395,12 +390,13 @@ std::string UDPServer::getFileRequest()
 			cout << filename[i];
 		cout << endl;
 
-		in.open(filename);
+		filenameStr = string((char*)filename);
+		in.open((char*)filename);
 	}
 
 	in.close();
 
-	filenameStr = string(filename);
+//	filenameStr = string((char*)filename);
 	if (filenameStr.compare("quit") == 0)
 		return '\0';
 	else
@@ -472,7 +468,7 @@ void UDPServer::instantiateOctoblocks()
 
 
 // data must be null terminated
-void UDPServer::attachHeader(unsigned char octolegFlag, unsigned short payloadSize, char* data)
+void UDPServer::attachHeader(unsigned char octolegFlag, unsigned short payloadSize, unsigned char* data)
 {
 	struct sockaddr_in serverAddress;
 	unsigned short serverPort;
@@ -510,7 +506,7 @@ void UDPServer::attachHeader(unsigned char octolegFlag, unsigned short payloadSi
 
 
 	// Packet Len
-	//	if (octolegFlag == '\0')
+	//	if (octolegFlag == NULL)
 	packetLen = payloadSize + HEADER_SIZE_BYTES;
 	//	else
 	//		packetLen = (unsigned short)octolegFlag;
@@ -528,7 +524,7 @@ void UDPServer::attachHeader(unsigned char octolegFlag, unsigned short payloadSi
 	//	cout << "Client IP: " << inet_ntoa(clientAddress.sin_addr) << endl;
 
 
-	string dataStr(data);
+	string dataStr((char*)data);
 
 	header[6] = header[7] = 0;
 	memcpy(data, header, HEADER_SIZE_BYTES);
@@ -543,7 +539,7 @@ void UDPServer::attachHeader(unsigned char octolegFlag, unsigned short payloadSi
 		(unsigned int)(clientAddress.sin_port)
 	);
 
-	cout << "Checksum in constructHeader(): " << checksum << endl;
+	cout << "Checksum in Server attachHeader(): " << checksum << endl;
 
 	firstHalf = checksum >> 8;
 	secondHalf = checksum & 0xFF;
@@ -551,7 +547,17 @@ void UDPServer::attachHeader(unsigned char octolegFlag, unsigned short payloadSi
 	header[6] = firstHalf;
 	header[7] = secondHalf;
 
+	cout << "Checksum First Half: " << (int)header[6] << endl;
+	cout << "Checksum Secnd Half: " << (int)header[7] << endl;
+
+
 	memcpy(data + 6, header + 6, 2);
+
+
+	cout << "Checksum First Half: " << (int)data[6] << endl;
+	cout << "Checksum Secnd Half: " << (int)data[7] << endl;
+
+
 
 	header[8] = '\0';
 
@@ -562,7 +568,7 @@ void UDPServer::attachHeader(unsigned char octolegFlag, unsigned short payloadSi
 	}
 
 
-	delete[] header;
+//	delete[] header;
 }
 
 

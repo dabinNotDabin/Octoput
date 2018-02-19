@@ -62,7 +62,7 @@ private:
 
 
 
-	void attachHeader(unsigned char octolegFlag, unsigned short payloadSize, char* data);
+	void attachHeader(unsigned char octolegFlag, unsigned short payloadSize, unsigned char* data);
 
 	unsigned short computeChecksum(const unsigned char* data, const char* clientIP, unsigned int clientPort);
 };

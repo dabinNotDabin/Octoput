@@ -36,10 +36,9 @@ private:
 
 
 	string askUserForFilename();
-	bool validateMessage(const char* data, int dataLen);
-	bool validateChecksum(const char* data);
 	bool parseOctoDescripto(const unsigned char* octoDescripto);
 
-
+	bool sendAck(unsigned char id);
+	void attachHeader(unsigned char octolegFlag, unsigned short payloadSize, unsigned char* data);
 	unsigned short computeChecksum(const unsigned char* data, const char* serverIP, unsigned int serverPort);
 };

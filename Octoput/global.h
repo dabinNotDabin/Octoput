@@ -22,8 +22,9 @@
 #include <map>
 
 
-#define HEADER_SIZE_BYTES 8
 
+#define HEADER_SIZE_BYTES 8
+#define ACK_SIZE_BYTES (HEADER_SIZE_BYTES + 1)
 
 unsigned short oneComplementSum(unsigned int k);
 
