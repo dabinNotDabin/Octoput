@@ -148,12 +148,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="global.h" />
+    <ClInclude Include="TaskQueue.h" />
     <ClInclude Include="UDPClient.h" />
     <ClInclude Include="UDPServer.h" />
     <ClInclude Include="Socket.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="TaskQueue.cpp" />
     <ClCompile Include="UDPClient.cpp" />
     <ClCompile Include="Octoput.cpp" />
     <ClCompile Include="UDPServer.cpp" />

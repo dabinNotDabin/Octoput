@@ -48,6 +48,7 @@ UDPClient::UDPClient(short family, short type, short protocol, unsigned int port
 	UDPSocket = new Socket();
 	struct sockaddr_in address;
 
+
 	if (!UDPSocket->initSocket(family, type, protocol))
 	{
 		cout << "Failure initializing socket with <family>, <type>, and <protocol>.\n";
@@ -61,14 +62,14 @@ UDPClient::UDPClient(short family, short type, short protocol, unsigned int port
 		inet_pton(AF_INET, "127.0.0.1", &address.sin_addr);
 
 		UDPSocket->associateAddress(address);
-
-//		UDPSocket->associateAddress(port);
 		bindSocket();
 
 		serverAddress.sin_family = family;
 		serverAddress.sin_port = htons(serverPort);
 		inet_pton(AF_INET, "127.0.0.1", &serverAddress.sin_addr);
 	}
+
+	currentOctoblock = 0;
 }
 
 
@@ -108,6 +109,19 @@ bool UDPClient::bindSocket()
 	}
 
 	return true;
+}
+
+
+
+
+
+void* UDPClient::clientThread(void* id)
+{
+	cout << "Thread id: " << (long)id << endl;
+
+
+
+	pthread_exit(0);
 }
 
 
@@ -162,23 +176,48 @@ void UDPClient::commenceOctovation()
 	if (checksum == rcvdChecksum)
 		sendAck(0);
 
-	//// While checksum not valid || parse NOT OK, receive message -- parse should be OK if checksum valid.
+	// While checksum not valid || parse NOT OK, receive message -- parse should be OK if checksum valid.
 
-	//// Build Octo Monocto.
-	//bool octoDescriptoOk = parseOctoDescripto(rcvMssg);
+	// Build Octo Monocto.
+	bool octoDescriptoOk = parseOctoDescripto(rcvMssg);
 
-	//cout << "Octo Descripto parsed " << (octoDescriptoOk ? "OK.\n" : "NOT OK.\n");
+	cout << "Octo Descripto parsed " << (octoDescriptoOk ? "OK.\n" : "NOT OK.\n");
 
-	//if (octoDescriptoOk)
-	//{
-	//	cout
-	//		<< "Total Size Of File: " << octoMonocto.totalFileSize << endl
-	//		<< "Number Of Full Octoblocks: " << octoMonocto.numFullOctoblocks << endl
-	//		<< "Size Of Partial Octoblock: " << octoMonocto.partialOctoblockSize << endl
-	//		<< "Size Of Partial Octolegs: " << octoMonocto.partialOctolegSize << endl
-	//		<< "Size Of Leftover Data: " << octoMonocto.leftoverDataSize << endl;
-	//}
+	if (octoDescriptoOk)
+	{
+		cout
+			<< "Total Size Of File: " << octoMonocto.totalFileSize << endl
+			<< "Number Of Full Octoblocks: " << octoMonocto.numFullOctoblocks << endl
+			<< "Size Of Partial Octoblock: " << octoMonocto.partialOctoblockSize << endl
+			<< "Size Of Partial Octolegs: " << octoMonocto.partialOctolegSize << endl
+			<< "Size Of Leftover Data: " << octoMonocto.leftoverDataSize << endl;
+	}
 
+
+
+
+	pthread_t* threads;
+	threads = new pthread_t[8];
+	long status;
+	long i;
+	for (i = 0; i < 8; i++)
+	{
+//		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPClient::clientThread, (void*)i);
+		status = pthread_create(&threads[i], NULL, &(this->clientThread), (void*)this);
+		if (status != 0)
+		{
+			std::cout << "Creation of thread resulted in error.\n";
+			exit(-1);
+		}
+	}
+
+
+
+	for (i = 0; i < 8; i++)
+		pthread_join(threads[i], NULL);
+
+
+	delete[] threads;
 
 
 	return;

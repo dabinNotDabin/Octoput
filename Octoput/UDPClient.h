@@ -3,7 +3,6 @@
 #include <map>
 
 #include "Socket.h"
-#include "UDPServer.h"
 
 using namespace std;
 
@@ -33,6 +32,12 @@ private:
 	int serverAddressLen = sizeof(*serverAddressPtr);
 
 	OctoMonocto octoMonocto;
+	unsigned char*** incomingOctoblocks; 	// [Octoblock][Octoleg][data]
+
+
+	static void* clientThread(void* id);
+	unsigned short currentOctoblock;
+
 
 
 	string askUserForFilename();

@@ -1,7 +1,7 @@
 #pragma once
 #include "Socket.h"
 #include <time.h>
-
+#include "TaskQueue.h"
 
 // It may be more elegant to maintain a request queue in the server that the sloxy can 
 // query and relay to the representative client but since it only needs to service
@@ -45,26 +45,28 @@ private:
 	std::string fileContents;
 
 	int octoblockSize = 8888;
-	int totalOctoblocksNeeded;
-	int numFullOctoblocksNeeded;
-	int partialOctoblockSize;
-	int partialOctolegSize;
-	int leftoverDataSize;
+	int fullOctolegSize = 1111;
 
-	std::string *octoblocks;
 
+	unsigned char* octoblockData;
+
+
+	TaskQueue* taskQ;
+
+	static void* serverThread(void* id);
+	unsigned short currentOctoblock;
 
 
 
 	std::string getFileRequest();
 	void instantiateOctoMonocto();
-	void instantiateOctoblocks();
 
 
 
 	void attachHeader(unsigned char octolegFlag, unsigned short payloadSize, unsigned char* data);
-
 	unsigned short computeChecksum(const unsigned char* data, const char* clientIP, unsigned int clientPort);
+
+	void sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int timeoutMsec);
 };
 
 

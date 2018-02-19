@@ -7,13 +7,6 @@
 
 
 
-
-void * worker(void * id)
-{
-
-	pthread_exit(0);
-}
-
 int main(int argc, char** argv)
 {
 	unsigned int serverPort = 12345;

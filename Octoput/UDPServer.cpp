@@ -20,8 +20,11 @@ UDPServer::~UDPServer()
 		delete UDPSocket;
 	}
 
-//	if (octoblocks != NULL)
-//		delete[] octoblocks;
+	if (octoblockData != NULL)
+		delete[] octoblockData;
+
+	if (taskQ != NULL)
+		delete taskQ;
 }
 
 
@@ -53,6 +56,8 @@ struct sockaddr_in UDPServer::getAddress()
 UDPServer::UDPServer(short family, short type, short protocol, unsigned int port, unsigned int clientPort)
 {
 	UDPSocket = new Socket();
+	taskQ = new TaskQueue();
+
 	struct sockaddr_in address;
 
 	if (!UDPSocket->initSocket(family, type, protocol))
@@ -68,7 +73,6 @@ UDPServer::UDPServer(short family, short type, short protocol, unsigned int port
 		inet_pton(AF_INET, "127.0.0.1", &address.sin_addr);
 
 		UDPSocket->associateAddress(address);
-//		UDPSocket->associateAddress(port);
 		bindSocket();
 
 		clientAddress.sin_family = family;
@@ -76,6 +80,10 @@ UDPServer::UDPServer(short family, short type, short protocol, unsigned int port
 		inet_pton(AF_INET, "127.0.0.1", &clientAddress.sin_addr);
 		cout << "Client Port Set In Server Constructor Netw Order: " << clientAddress.sin_port << endl;
 	}
+
+	currentOctoblock = 0;
+	for (uint8_t i = 0; i < 8; i++)
+		taskQ->putTask(i);
 }
 
 
@@ -151,6 +159,67 @@ bool UDPServer::bindSocket()
 
 
 
+
+
+void* UDPServer::serverThread(void* id)
+{
+//	cout << "Thread id: " << (long)id << endl;
+
+	unsigned short octolegSize;
+	unsigned char* octoleg;
+	unsigned short startPos;
+	uint8_t octolegID;
+
+	UDPServer* server = ((UDPServer*)id);
+	octolegID = server->taskQ->getTask();
+
+
+	if (server->currentOctoblock < server->octoMonocto.numFullOctoblocks)
+	{
+		cout << "Working on full octoblocks.\n";
+		octoleg = new unsigned char[server->octoblockSize + 1];
+
+		startPos = (server->currentOctoblock * 8888) + (octolegID * server->fullOctolegSize);
+		octolegSize = server->fullOctolegSize;
+		memcpy(octoleg, (char*)(server->octoblockData[startPos]), octolegSize);
+	}
+	else if (server->currentOctoblock == server->octoMonocto.numFullOctoblocks)
+	{
+		cout << "Working on partial octoblock.\n";
+		octoleg = new unsigned char[server->octoMonocto.partialOctolegSize + 1];
+
+		startPos = 
+			(server->octoMonocto.numFullOctoblocks * 8888) +
+			(octolegID * server->octoMonocto.partialOctolegSize);
+		octolegSize = server->octoMonocto.partialOctolegSize;
+		memcpy(octoleg, (char*)(server->octoblockData[startPos]), octolegSize);
+	}
+	else
+	{
+		cout << "Working on leftover data.\n";
+		octoleg = new unsigned char[2];
+
+		startPos =
+			(server->octoMonocto.numFullOctoblocks * 8888)  +
+			(server->octoMonocto.partialOctolegSize * 8)	+
+			(octolegID * 1);
+		octolegSize = 1;
+		memcpy(octoleg, (char*)(server->octoblockData[startPos]), octolegSize);
+	}
+
+	
+	server->sendMssgRequireAck(octoleg, octolegSize, 100000);
+
+
+	cout << "Ack Received.\n";
+
+	
+
+	pthread_exit(0);
+}
+
+
+
 void UDPServer::commenceOctovation()
 {	
 	string filename = getFileRequest();
@@ -185,15 +254,22 @@ void UDPServer::commenceOctovation()
 		cout << "ClientPort After Send: " << clientAddress.sin_port << endl;
 	}
 
-	in.open(filename);
-	getline(in, fileContents, '\0');
-	in.close();
 
+	in.open(filename, ios::in | ios::binary);
+	fileContents = string((istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 
 	instantiateOctoMonocto();
-	instantiateOctoblocks();
 
-	
+	octoblockData = new unsigned char [octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8))];
+	octoblockData = (unsigned char*)fileContents.data();
+
+	for (int i = octoMonocto.totalFileSize; i % 8 != 0; i++)
+		octoblockData[i] = '\0';
+
+	cout << "FILE: \n" << fileContents << endl;
+
+	in.close();
+
 	octoDescripto =
 		"Total Size Of File: " + to_string(fileContents.length()) + "\r\n" +
 		"Number Of Full Octoblocks: " + to_string(octoMonocto.numFullOctoblocks) + "\r\n" +
@@ -201,12 +277,38 @@ void UDPServer::commenceOctovation()
 		"Size Of Partial Octolegs: " + to_string(octoMonocto.partialOctolegSize) + "\r\n" +
 		"Size Of Leftover Data: " + to_string(octoMonocto.leftoverDataSize) + "\r\n";
 
-//	cout << "Server Port: " << ntohs(serverAddress.sin_port) << endl;
-
 
 	memcpy(sendMssg, octoDescripto.c_str(), octoDescripto.length());
+
 	sendMssg[octoDescripto.length()] = '\0';
 	attachHeader('\0', octoDescripto.length(), sendMssg);
+
+	sendMssgRequireAck(sendMssg, octoDescripto.length() + HEADER_SIZE_BYTES, 100000);
+	
+
+
+	pthread_t* threads;
+	threads = new pthread_t[8];
+	long status;
+	long i;
+	for (i = 0; i < 8; i++)
+	{
+		status = pthread_create(&threads[i], NULL, &(this->serverThread), (void*)this);
+//		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPServer::serverThread, (void*)this);
+		if (status != 0)
+		{
+			std::cout << "Creation of thread resulted in error.\n";
+			exit(-1);
+		}
+	}
+
+
+
+	for (i = 0; i < 8; i++)
+		pthread_join(threads[i], NULL);
+
+
+	delete[] threads;
 
 
 
@@ -234,28 +336,38 @@ void UDPServer::commenceOctovation()
 
 	//before = clock();
 
-//	sleep(1);
+	//elapsed = clock() - before;
+
+	//cout << "Time elapsed: " << elapsed / CLOCKS_PER_SEC << " seconds.\n";
+
+	return;
+}
 
 
-	int sleepTimeMsec = 100000; // 100 000 usec = 100 msec
+
+
+
+void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int timeoutMsec)
+{
+	string mssgStr;
+	string ackStr;
 	int nBytesRcvd;
 	unsigned short checksum;
 	unsigned short rcvdChecksum;
-	string ackStr;
 	unsigned char ack[ACK_SIZE_BYTES + 1];
 	bool ackOK = false;
 
 	sendto
 	(
 		UDPSocket->getFD(),
-		sendMssg,
-		octoDescripto.length() + HEADER_SIZE_BYTES,
+		mssg,
+		mssgLen,
 		0,
 		clientAddressPtr,
 		clientAddressLen
 	);
 
-	usleep(sleepTimeMsec); 
+	usleep(timeoutMsec);
 
 	memset(ack, 0, ACK_SIZE_BYTES);
 	nBytesRcvd = recvfrom
@@ -267,7 +379,7 @@ void UDPServer::commenceOctovation()
 		clientAddressPtr,
 		&clientAddressLen
 	);
-	
+
 	while (!ackOK)
 	{
 		rcvdChecksum = ((ack[6] << 8) | ack[7]);
@@ -278,7 +390,7 @@ void UDPServer::commenceOctovation()
 		for (int i = 0; i < nBytesRcvd; i++)
 			cout << ack[i];
 		cout << " of length: " << nBytesRcvd << endl;
-	
+
 		checksum = computeChecksum((unsigned char*)ack, inet_ntoa(clientAddress.sin_addr), clientAddress.sin_port);
 		cout << "ACK Checksum Computed: " << checksum << endl;
 
@@ -292,14 +404,14 @@ void UDPServer::commenceOctovation()
 			sendto
 			(
 				UDPSocket->getFD(),
-				sendMssg,
-				octoDescripto.length() + HEADER_SIZE_BYTES,
+				mssg,
+				mssgLen,
 				0,
 				clientAddressPtr,
 				clientAddressLen
 			);
 
-			usleep(sleepTimeMsec);
+			usleep(timeoutMsec);
 
 			memset(ack, 0, ACK_SIZE_BYTES);
 			nBytesRcvd = recvfrom
@@ -315,15 +427,11 @@ void UDPServer::commenceOctovation()
 		}
 	}
 
-	// Start timer, when expired, try to receive ack.
-	// While invalid or not received, resend octo descripto.
-	
-	//elapsed = clock() - before;
-
-	//cout << "Time elapsed: " << elapsed / CLOCKS_PER_SEC << " seconds.\n";
-
 	return;
 }
+
+
+
 
 
 
@@ -407,6 +515,12 @@ std::string UDPServer::getFileRequest()
 
 void UDPServer::instantiateOctoMonocto()
 {
+	int totalOctoblocksNeeded;
+	int numFullOctoblocksNeeded;
+	int partialOctoblockSize;
+	int partialOctolegSize;
+	int leftoverDataSize;
+
 	numFullOctoblocksNeeded = fileContents.length() / octoblockSize;
 
 	// If partialOctoblockSize is not 0, have to send partial octoblock.
@@ -439,30 +553,6 @@ void UDPServer::instantiateOctoMonocto()
 		(short)leftoverDataSize
 	};
 
-}
-
-
-
-void UDPServer::instantiateOctoblocks()
-{
-	octoblocks = new std::string[totalOctoblocksNeeded];
-
-	// Divide file contents into octoblocks and store in array, padding leftover data if necessary.
-	for (int i = 0; i < totalOctoblocksNeeded; i++)
-	{
-		if (i < numFullOctoblocksNeeded)
-		{
-			octoblocks[i] = fileContents.substr(i * octoblockSize, octoblockSize);
-		}
-		else if (i == totalOctoblocksNeeded - 2)
-		{
-			octoblocks[i] = fileContents.substr(numFullOctoblocksNeeded * octoblockSize, partialOctoblockSize);
-		}
-		else // (i == totalOctoblocksNeeded - 1)
-		{
-			octoblocks[i] = fileContents.substr(numFullOctoblocksNeeded * octoblockSize + partialOctoblockSize);
-		}
-	}
 }
 
 

@@ -29,6 +29,9 @@
 unsigned short oneComplementSum(unsigned int k);
 
 
+typedef void* (*THREADFUNCPTR)(void*);
+
+
 struct OctoMonocto
 {
 	short totalFileSize;
