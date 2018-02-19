@@ -1,7 +1,5 @@
 #pragma once
-#include <vector>
-#include <map>
-
+#include "TaskQueue.h"
 #include "Socket.h"
 
 using namespace std;
@@ -32,11 +30,20 @@ private:
 	int serverAddressLen = sizeof(*serverAddressPtr);
 
 	OctoMonocto octoMonocto;
-	unsigned char*** incomingOctoblocks; 	// [Octoblock][Octoleg][data]
+
+	unsigned char* incomingOctodata;
 
 
 	static void* clientThread(void* id);
-	unsigned short currentOctoblock;
+	int octoblockSize = 8888;
+	int fullOctolegSize = 1111;
+
+
+	TaskQueue* taskQ;
+	pthread_mutex_t socketMutex;
+	pthread_mutex_t generalMutex;
+	unsigned short numOctoblocksReceived;
+	unsigned short numOctolegsReceived;
 
 
 
@@ -46,4 +53,5 @@ private:
 	bool sendAck(unsigned char id);
 	void attachHeader(unsigned char octolegFlag, unsigned short payloadSize, unsigned char* data);
 	unsigned short computeChecksum(const unsigned char* data, const char* serverIP, unsigned int serverPort);
+	void receiveMssg(char *buffer, unsigned short mssgLen);
 };

@@ -1,7 +1,6 @@
 #pragma once
-#include "Socket.h"
-#include <time.h>
 #include "TaskQueue.h"
+#include "Socket.h"
 
 // It may be more elegant to maintain a request queue in the server that the sloxy can 
 // query and relay to the representative client but since it only needs to service
@@ -38,6 +37,7 @@ private:
 	int clientAddressLen = sizeof(*clientAddressPtr);
 
 	OctoMonocto octoMonocto;
+	pthread_mutex_t generalMutex;
 
 
 	std::ifstream in;
@@ -54,7 +54,9 @@ private:
 	TaskQueue* taskQ;
 	pthread_mutex_t socketMutex;
 	static void* serverThread(void* id);
-	unsigned short currentOctoblock;
+
+	unsigned short numOctoblocksTransferred;
+	unsigned short numOctolegsTransferred;
 
 
 

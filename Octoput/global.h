@@ -20,9 +20,10 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <map>
+#include "fcntl.h"
 
-
-
+#define N_OCTOLEGS_PER_OCTOBLOCK 8
+#define N_THREADS 8
 #define HEADER_SIZE_BYTES 8
 #define ACK_SIZE_BYTES (HEADER_SIZE_BYTES + 1)
 

@@ -17,6 +17,15 @@ UDPClient::~UDPClient()
 		close(UDPSocket->getFD());
 //		delete UDPSocket;
 	}
+
+	if (incomingOctodata != NULL)
+		delete[] incomingOctodata;
+
+	if (taskQ != NULL)
+		delete taskQ;
+	
+	pthread_mutex_destroy(&socketMutex);
+	pthread_mutex_destroy(&generalMutex);
 }
 
 
@@ -46,8 +55,9 @@ struct sockaddr_in UDPClient::getAddress()
 UDPClient::UDPClient(short family, short type, short protocol, unsigned int port, unsigned int serverPort)
 {
 	UDPSocket = new Socket();
-	struct sockaddr_in address;
+	taskQ = new TaskQueue();
 
+	struct sockaddr_in address;
 
 	if (!UDPSocket->initSocket(family, type, protocol))
 	{
@@ -69,7 +79,13 @@ UDPClient::UDPClient(short family, short type, short protocol, unsigned int port
 		inet_pton(AF_INET, "127.0.0.1", &serverAddress.sin_addr);
 	}
 
-	currentOctoblock = 0;
+	int flags = fcntl(UDPSocket->getFD(), F_GETFL, 0);
+	flags = flags | O_NONBLOCK;
+	fcntl(UDPSocket->getFD(), F_SETFL, flags);
+
+
+	pthread_mutex_init(&socketMutex, NULL);
+	pthread_mutex_init(&generalMutex, NULL);
 }
 
 
@@ -117,7 +133,70 @@ bool UDPClient::bindSocket()
 
 void* UDPClient::clientThread(void* id)
 {
-	cout << "Thread id: " << (long)id << endl;
+	unsigned short octolegSize;
+	unsigned char* octoleg;
+	unsigned short startPos;
+	uint8_t octolegID;
+
+	UDPClient* client = ((UDPClient*)id);
+	octolegID = client->taskQ->getTask(client->numOctoblocksReceived);
+
+	
+
+	while (octolegID < 8)
+	{
+		if (client->numOctoblocksReceived < client->octoMonocto.numFullOctoblocks)
+		{
+			cout << "Working on full octoblocks.\n";
+			octoleg = new unsigned char[client->fullOctolegSize + HEADER_SIZE_BYTES];
+
+			startPos = (client->numOctoblocksReceived * 8888) + (octolegID * client->fullOctolegSize);
+			octolegSize = client->fullOctolegSize;
+			memcpy(octoleg, &(client->incomingOctodata[startPos]), octolegSize);
+		}
+		else if (client->numOctoblocksReceived  == client->octoMonocto.numFullOctoblocks)
+		{
+			cout << "Working on partial octoblock.\n";
+			octoleg = new unsigned char[client->octoMonocto.partialOctolegSize + HEADER_SIZE_BYTES];
+
+			startPos =
+				(client->octoMonocto.numFullOctoblocks * 8888) +
+				(octolegID * client->octoMonocto.partialOctolegSize);
+			octolegSize = client->octoMonocto.partialOctolegSize;
+			memcpy(octoleg, &(client->incomingOctodata[startPos]), octolegSize);
+		}
+		else
+		{
+			cout << "Working on leftover data.\n";
+			octoleg = new unsigned char[1 + HEADER_SIZE_BYTES];
+
+			startPos =
+				(client->octoMonocto.numFullOctoblocks * 8888) +
+				(client->octoMonocto.partialOctoblockSize) +
+				(octolegID * 1);
+			octolegSize = 1;
+			memcpy(octoleg, &(client->incomingOctodata[startPos]), octolegSize);
+		}
+
+//		client->attachHeader(octolegID, octolegSize, octoleg);
+//		client->sendMssgRequireAck(octoleg, octolegSize, 100000);
+//		cout << "Ack Received.\n";
+
+
+
+		pthread_mutex_lock(&client->generalMutex);
+
+		client->numOctolegsReceived++;
+		if (client->numOctolegsReceived % 8 == 0)
+		{
+			client->numOctoblocksReceived++;
+			client->taskQ->nextOctoblock();
+		}
+		pthread_mutex_unlock(&client->generalMutex);
+
+
+		octolegID = client->taskQ->getTask(client->numOctoblocksReceived);
+	}
 
 
 
@@ -194,13 +273,34 @@ void UDPClient::commenceOctovation()
 	}
 
 
+	// Receive actual file contents.
+	incomingOctodata = new unsigned char[octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8))];
+
+	for (int i = octoMonocto.totalFileSize; i % 8 != 0; i++)
+		incomingOctodata[i] = '\0';
+
+	// Initialize task queue and control variables.
+	unsigned short numTotalOctoblocks =
+		octoMonocto.numFullOctoblocks +
+		(octoMonocto.partialOctoblockSize != 0) ? 1 : 0 +
+		(octoMonocto.leftoverDataSize != 0) ? 1 : 0;
+
+	cout << "Num Total Octoblocks: " << numTotalOctoblocks << endl;
+
+	for (uint8_t i = 0; i < numTotalOctoblocks; i++)
+		for (uint8_t j = 0; j < N_OCTOLEGS_PER_OCTOBLOCK; j++)
+			taskQ->putTask(j);
+
+	taskQ->setWorkFinished(true);
 
 
+
+	// Start threads.
 	pthread_t* threads;
-	threads = new pthread_t[8];
+	threads = new pthread_t[N_THREADS];
 	long status;
 	long i;
-	for (i = 0; i < 8; i++)
+	for (i = 0; i < N_THREADS; i++)
 	{
 //		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPClient::clientThread, (void*)i);
 		status = pthread_create(&threads[i], NULL, &(this->clientThread), (void*)this);

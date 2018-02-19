@@ -9,26 +9,36 @@ using namespace std;
 	TaskQueue::TaskQueue()
 	{
 		workFinished = false;
+		currentOctoblock = 0;
 		pthread_mutex_init(&queueMutex, NULL);
 		pthread_cond_init(&queueEmpty, NULL);
+		pthread_cond_init(&octoblocked, NULL);
 	}
 
 	TaskQueue::~TaskQueue()
 	{
 		pthread_mutex_destroy(&queueMutex);
 		pthread_cond_destroy(&queueEmpty);
+		pthread_cond_destroy(&octoblocked);
 	}
 
-
-	// Returns -1 if input read loop set workFinished to true and queue is empty or
+	
+	// Returns 8 if input read loop set workFinished to true and queue is empty or
 	// if the queue is empty but the empty condition variable was signaled.
 	// This handles the case where threads were waiting for the signal prior to
 	// the workFinished variable being set.  
-	uint8_t TaskQueue::getTask()
+	uint8_t TaskQueue::getTask(unsigned short requestedOctoblock)
 	{
-		uint8_t n = -1;
+		uint8_t n = 8;
 
+		// Since waiting unlocks the mutex, all threads can enter this waiting state.
+		// Next octoblock will unblock all waiting threads and put them in a waiting state
+		// to acquire the mutex when it becomes free in some order determined by the scheduler.
 		pthread_mutex_lock(&queueMutex);
+		while (requestedOctoblock > currentOctoblock)
+		{
+			pthread_cond_wait(&octoblocked, &queueMutex);
+		}
 
 		if (workFinished && octolegQueue.empty())
 			n = -1;
@@ -48,7 +58,6 @@ using namespace std;
 				octolegQueue.pop();
 			}
 		}
-
 		pthread_mutex_unlock(&queueMutex);
 
 		return n;
@@ -75,6 +84,16 @@ using namespace std;
 		pthread_mutex_lock(&queueMutex);
 		workFinished = finished;
 		pthread_cond_broadcast(&queueEmpty);
+		pthread_mutex_unlock(&queueMutex);
+	}
+
+
+
+	void TaskQueue::nextOctoblock()
+	{
+		pthread_mutex_lock(&queueMutex);
+		currentOctoblock++;
+		pthread_cond_broadcast(&octoblocked);
 		pthread_mutex_unlock(&queueMutex);
 	}
 

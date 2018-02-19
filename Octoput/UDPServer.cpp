@@ -27,6 +27,7 @@ UDPServer::~UDPServer()
 		delete taskQ;
 
 	pthread_mutex_destroy(&socketMutex);
+	pthread_mutex_destroy(&generalMutex);
 }
 
 
@@ -83,11 +84,13 @@ UDPServer::UDPServer(short family, short type, short protocol, unsigned int port
 		cout << "Client Port Set In Server Constructor Netw Order: " << clientAddress.sin_port << endl;
 	}
 
-	currentOctoblock = 0;
-	for (uint8_t i = 0; i < 8; i++)
-		taskQ->putTask(i);
+
+	int flags = fcntl(UDPSocket->getFD(), F_GETFL, 0);
+	flags = flags | O_NONBLOCK;
+	fcntl(UDPSocket->getFD(), F_SETFL, flags);
 
 	pthread_mutex_init(&socketMutex, NULL);
+	pthread_mutex_init(&generalMutex, NULL);
 }
 
 
@@ -167,57 +170,70 @@ bool UDPServer::bindSocket()
 
 void* UDPServer::serverThread(void* id)
 {
-//	cout << "Thread id: " << (long)id << endl;
-
 	unsigned short octolegSize;
 	unsigned char* octoleg;
 	unsigned short startPos;
 	uint8_t octolegID;
 
 	UDPServer* server = ((UDPServer*)id);
-	octolegID = server->taskQ->getTask();
 
-
-	if (server->currentOctoblock < server->octoMonocto.numFullOctoblocks)
+	octolegID = server->taskQ->getTask(server->numOctoblocksTransferred);
+	while (octolegID < 8)
 	{
-		cout << "Working on full octoblocks.\n";
-		octoleg = new unsigned char[server->octoblockSize + 1];
+		if (server->numOctoblocksTransferred < server->octoMonocto.numFullOctoblocks)
+		{
+			cout << "Working on full octoblocks.\n";
+			octoleg = new unsigned char[server->fullOctolegSize + HEADER_SIZE_BYTES];
 
-		startPos = (server->currentOctoblock * 8888) + (octolegID * server->fullOctolegSize);
-		octolegSize = server->fullOctolegSize;
-		memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
+			startPos = (server->numOctoblocksTransferred * 8888) + (octolegID * server->fullOctolegSize);
+			octolegSize = server->fullOctolegSize;
+			memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
+		}
+		else if (server->numOctoblocksTransferred == server->octoMonocto.numFullOctoblocks)
+		{
+			cout << "Working on partial octoblock.\n";
+			octoleg = new unsigned char[server->octoMonocto.partialOctolegSize + HEADER_SIZE_BYTES];
+
+			startPos =
+				(server->octoMonocto.numFullOctoblocks * 8888) +
+				(octolegID * server->octoMonocto.partialOctolegSize);
+			octolegSize = server->octoMonocto.partialOctolegSize;
+			memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
+		}
+		else
+		{
+			cout << "Working on leftover data.\n";
+			octoleg = new unsigned char[1 + HEADER_SIZE_BYTES];
+
+			startPos =
+				(server->octoMonocto.numFullOctoblocks * 8888) +
+				(server->octoMonocto.partialOctoblockSize) +
+				(octolegID * 1);
+			octolegSize = 1;
+			memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
+		}
+
+		server->attachHeader(octolegID, octolegSize, octoleg);
+		server->sendMssgRequireAck(octoleg, octolegSize, 100000);
+		cout << "Ack Received.\n";
+		
+
+
+		pthread_mutex_lock(&server->generalMutex);
+
+		server->numOctolegsTransferred++;
+		if (server->numOctolegsTransferred % 8 == 0)
+		{
+			server->numOctoblocksTransferred++;
+			server->taskQ->nextOctoblock();
+		}
+		pthread_mutex_unlock(&server->generalMutex);
+
+
+		octolegID = server->taskQ->getTask(server->numOctoblocksTransferred);
 	}
-	else if (server->currentOctoblock == server->octoMonocto.numFullOctoblocks)
-	{
-		cout << "Working on partial octoblock.\n";
-		octoleg = new unsigned char[server->octoMonocto.partialOctolegSize + 1];
-
-		startPos = 
-			(server->octoMonocto.numFullOctoblocks * 8888) +
-			(octolegID * server->octoMonocto.partialOctolegSize);
-		octolegSize = server->octoMonocto.partialOctolegSize;
-		memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
-	}
-	else
-	{
-		cout << "Working on leftover data.\n";
-		octoleg = new unsigned char[2];
-
-		startPos =
-			(server->octoMonocto.numFullOctoblocks * 8888)  +
-			(server->octoMonocto.partialOctolegSize * 8)	+
-			(octolegID * 1);
-		octolegSize = 1;
-		memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
-	}
-
-	
-	server->sendMssgRequireAck(octoleg, octolegSize, 100000);
 
 
-	cout << "Ack Received.\n";
-
-	
 
 	pthread_exit(0);
 }
@@ -291,11 +307,31 @@ void UDPServer::commenceOctovation()
 	
 
 
+	// Send actual file contents.
+
+	// Initialize task queue and control variables.
+	numOctoblocksTransferred = 0;
+	numOctolegsTransferred = 0;
+
+	unsigned short numTotalOctoblocks =
+		octoMonocto.numFullOctoblocks +
+		(octoMonocto.partialOctoblockSize != 0) ? 1 : 0 +
+		(octoMonocto.leftoverDataSize != 0) ? 1 : 0;
+
+	cout << "Num Total Octoblocks: " << numTotalOctoblocks << endl;
+
+	for (uint8_t i = 0; i < numTotalOctoblocks; i++)
+		for (uint8_t j = 0; j < N_OCTOLEGS_PER_OCTOBLOCK; j++)
+			taskQ->putTask(j);
+
+	taskQ->setWorkFinished(true);
+
+	// Start threads.
 	pthread_t* threads;
-	threads = new pthread_t[8];
+	threads = new pthread_t[N_THREADS];
 	long status;
 	long i;
-	for (i = 0; i < 8; i++)
+	for (i = 0; i < N_THREADS; i++)
 	{
 		status = pthread_create(&threads[i], NULL, &(this->serverThread), (void*)this);
 //		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPServer::serverThread, (void*)this);
@@ -308,41 +344,11 @@ void UDPServer::commenceOctovation()
 
 
 
-	for (i = 0; i < 8; i++)
+	for (i = 0; i < N_THREADS; i++)
 		pthread_join(threads[i], NULL);
 
 
 	delete[] threads;
-
-
-
-/*
-	pthread_mutex_t queueMutex;
-	pthread_cond_t queueEmpty;
-	pthread_mutex_init(&queueMutex, NULL);
-	pthread_cond_init(&queueEmpty, NULL);
-	pthread_mutex_destroy(&queueMutex);
-	pthread_cond_destroy(&queueEmpty);
-
-
-	pthread_mutex_lock(&queueMutex);
-	numberQueue.push(n);
-	pthread_cond_signal(&queueEmpty);
-	pthread_mutex_unlock(&queueMutex);
-
-	pthread_mutex_lock(&queueMutex);
-	pthread_cond_wait(&queueEmpty, &queueMutex);
-	pthread_mutex_unlock(&queueMutex);
-*/
-
-	//clock_t before;
-	//double elapsed;
-
-	//before = clock();
-
-	//elapsed = clock() - before;
-
-	//cout << "Time elapsed: " << elapsed / CLOCKS_PER_SEC << " seconds.\n";
 
 	return;
 }

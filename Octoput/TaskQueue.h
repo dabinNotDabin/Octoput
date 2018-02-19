@@ -11,13 +11,14 @@ class TaskQueue
 {
 private:
 	bool workFinished;
-	int numThreads;
+	unsigned short numThreads;
+	unsigned short currentOctoblock;
 
 	queue<uint8_t> octolegQueue;
 
 	pthread_mutex_t queueMutex;
 	pthread_cond_t queueEmpty;
-
+	pthread_cond_t octoblocked;
 
 public:
 
@@ -29,7 +30,7 @@ public:
 	// if the queue is empty but the empty condition variable was signaled.
 	// This handles the case where threads were waiting for the signal prior to
 	// the workFinished variable being set.  
-	uint8_t getTask();
+	uint8_t getTask(unsigned short requestedOctoblock);
 
 
 	// Controls pushing regular tasks into the queue to be processed, employing
@@ -43,4 +44,6 @@ public:
 	// Doesn't matter which tasks threads were waiting on (getTask or getBigTask)
 	void setWorkFinished(bool finished);
 
+
+	void nextOctoblock();
 };
