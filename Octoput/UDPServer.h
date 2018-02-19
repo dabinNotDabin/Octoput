@@ -1,11 +1,8 @@
 #pragma once
 #include "TaskQueue.h"
 #include "Socket.h"
+#include "time.h"
 
-// It may be more elegant to maintain a request queue in the server that the sloxy can 
-// query and relay to the representative client but since it only needs to service
-// one client, I will instead have the Sloxy use the server to receive messages
-// and process them as necessary before relaying requests to the representative client.
 class UDPServer
 {
 public:
@@ -49,7 +46,7 @@ private:
 
 
 	unsigned char* octoblockData;
-
+	bool ackRcvd[8];
 
 	TaskQueue* taskQ;
 	pthread_mutex_t socketMutex;
@@ -65,10 +62,10 @@ private:
 
 
 
-	void attachHeader(unsigned char octolegFlag, unsigned short payloadSize, unsigned char* data);
+	void attachHeader(char octolegFlag, unsigned short payloadSize, unsigned char* data);
 	unsigned short computeChecksum(const unsigned char* data, const char* clientIP, unsigned int clientPort);
 
-	void sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int timeoutMsec);
+	void sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int timeoutMsec, char octolegID);
 };
 
 

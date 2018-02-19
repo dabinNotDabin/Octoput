@@ -48,7 +48,9 @@ struct sockaddr_in UDPServer::getAddress()
 {
 	struct sockaddr_in addr;
 
+	pthread_mutex_lock(&socketMutex);
 	UDPSocket->getAddress(addr);
+	pthread_mutex_unlock(&socketMutex);
 
 	return addr;
 }
@@ -91,6 +93,8 @@ UDPServer::UDPServer(short family, short type, short protocol, unsigned int port
 
 	pthread_mutex_init(&socketMutex, NULL);
 	pthread_mutex_init(&generalMutex, NULL);
+	
+	memset(ackRcvd, 0, 8);
 }
 
 
@@ -214,7 +218,7 @@ void* UDPServer::serverThread(void* id)
 		}
 
 		server->attachHeader(octolegID, octolegSize, octoleg);
-		server->sendMssgRequireAck(octoleg, octolegSize, 100000);
+		server->sendMssgRequireAck(octoleg, octolegSize, 100000, octolegID);
 		cout << "Ack Received.\n";
 		
 
@@ -225,6 +229,7 @@ void* UDPServer::serverThread(void* id)
 		if (server->numOctolegsTransferred % 8 == 0)
 		{
 			server->numOctoblocksTransferred++;
+			memset(server->ackRcvd, 0, 8);
 			server->taskQ->nextOctoblock();
 		}
 		pthread_mutex_unlock(&server->generalMutex);
@@ -301,9 +306,9 @@ void UDPServer::commenceOctovation()
 	memcpy(sendMssg, octoDescripto.c_str(), octoDescripto.length());
 
 	sendMssg[octoDescripto.length()] = '\0';
-	attachHeader('\0', octoDescripto.length(), sendMssg);
+	attachHeader(-1, octoDescripto.length(), sendMssg);
 
-	sendMssgRequireAck(sendMssg, octoDescripto.length() + HEADER_SIZE_BYTES, 100000);
+	sendMssgRequireAck(sendMssg, octoDescripto.length() + HEADER_SIZE_BYTES, 100000, -1);
 	
 
 
@@ -327,28 +332,27 @@ void UDPServer::commenceOctovation()
 	taskQ->setWorkFinished(true);
 
 	// Start threads.
-	pthread_t* threads;
-	threads = new pthread_t[N_THREADS];
-	long status;
-	long i;
-	for (i = 0; i < N_THREADS; i++)
-	{
-		status = pthread_create(&threads[i], NULL, &(this->serverThread), (void*)this);
-//		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPServer::serverThread, (void*)this);
-		if (status != 0)
-		{
-			std::cout << "Creation of thread resulted in error.\n";
-			exit(-1);
-		}
-	}
-
-
-
-	for (i = 0; i < N_THREADS; i++)
-		pthread_join(threads[i], NULL);
-
-
-	delete[] threads;
+//	pthread_t* threads;
+//	threads = new pthread_t[N_THREADS];
+//	long status;
+//	long i;
+//	for (i = 0; i < N_THREADS; i++)
+//	{
+//		status = pthread_create(&threads[i], NULL, &(this->serverThread), (void*)this);
+////		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPServer::serverThread, (void*)this);
+//		if (status != 0)
+//		{
+//			std::cout << "Creation of thread resulted in error.\n";
+//			exit(-1);
+//		}
+//	}
+//
+//
+//	for (i = 0; i < N_THREADS; i++)
+//		pthread_join(threads[i], NULL);
+//
+//
+//	delete[] threads;
 
 	return;
 }
@@ -357,15 +361,22 @@ void UDPServer::commenceOctovation()
 
 
 
-void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int timeoutMsec)
+void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int timeoutMsec, char octolegID)
 {
 	string mssgStr;
 	string ackStr;
 	int nBytesRcvd;
+	unsigned char octolegFlag;
 	unsigned short checksum;
 	unsigned short rcvdChecksum;
 	unsigned char ack[ACK_SIZE_BYTES + 1];
 	bool ackOK = false;
+
+
+	clock_t before;
+	double elapsed;
+	before = clock();
+
 
 	pthread_mutex_lock(&socketMutex);
 	sendto
@@ -379,10 +390,9 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 	);
 	pthread_mutex_unlock(&socketMutex);
 
-	usleep(timeoutMsec);
+//	usleep(timeoutMsec);
 
 	memset(ack, 0, ACK_SIZE_BYTES);
-
 	pthread_mutex_lock(&socketMutex);
 	nBytesRcvd = recvfrom
 	(
@@ -397,38 +407,55 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 
 	while (!ackOK)
 	{
-		rcvdChecksum = ((ack[6] << 8) | ack[7]);
-		cout << "Received ACK Checksum: " << rcvdChecksum << endl;
+		checksum = 1;
+		rcvdChecksum = 0;
 
-		ack[nBytesRcvd] = '\0';
-		cout << "ACK Received: ";
-		for (int i = 0; i < nBytesRcvd; i++)
-			cout << ack[i];
-		cout << " of length: " << nBytesRcvd << endl;
+		if (nBytesRcvd != -1)
+		{
+			rcvdChecksum = ((ack[6] << 8) | ack[7]);
+			cout << "Received ACK Checksum: " << rcvdChecksum << endl;
 
-		checksum = computeChecksum((unsigned char*)ack, inet_ntoa(clientAddress.sin_addr), clientAddress.sin_port);
-		cout << "ACK Checksum Computed: " << checksum << endl;
+//			ack[nBytesRcvd] = '\0';
+//			cout << "ACK Received: ";
+//			for (int i = 0; i < nBytesRcvd; i++)
+//				cout << ack[i];
+//			cout << " of length: " << nBytesRcvd << endl;
+
+			checksum = computeChecksum((unsigned char*)ack, inet_ntoa(clientAddress.sin_addr), clientAddress.sin_port);
+			cout << "ACK Checksum Computed: " << checksum << endl;
+		}
 
 		if (checksum == rcvdChecksum)
 		{
 			cout << "Ack OK.\n";
-			ackOK = true;
+			if (octolegID >= 0)
+			{
+				octolegFlag = ack[5];
+				pthread_mutex_lock(&generalMutex);
+				ackRcvd[octolegFlag] = true;
+				pthread_mutex_unlock(&generalMutex);
+			}
+			else
+				ackOK = true;
 		}
 		else
 		{
-			pthread_mutex_lock(&socketMutex);
-			sendto
-			(
-				UDPSocket->getFD(),
-				mssg,
-				mssgLen,
-				0,
-				clientAddressPtr,
-				clientAddressLen
-			);
-			pthread_mutex_unlock(&socketMutex);
+			if (elapsed > timeoutMsec)
+			{
+				pthread_mutex_lock(&socketMutex);
+				sendto
+				(
+					UDPSocket->getFD(),
+					mssg,
+					mssgLen,
+					0,
+					clientAddressPtr,
+					clientAddressLen
+				);
+				pthread_mutex_unlock(&socketMutex);
 
-			usleep(timeoutMsec);
+				before = clock();
+			}
 
 			memset(ack, 0, ACK_SIZE_BYTES);
 			pthread_mutex_lock(&socketMutex);
@@ -443,6 +470,15 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 			);
 			pthread_mutex_unlock(&socketMutex);
 		}
+
+		if (octolegID >= 0)
+		{
+			pthread_mutex_lock(&generalMutex);
+			ackOK = ackRcvd[octolegID];
+			pthread_mutex_unlock(&generalMutex);
+		}
+
+		elapsed = ((clock() - before) / CLOCKS_PER_SEC) * 1000;
 	}
 
 	return;
@@ -460,22 +496,18 @@ std::string UDPServer::getFileRequest()
 	unsigned char filename[276];
 	cout << "Received.\n";
 
-	nBytesRcvd = recvfrom
-	(
-		UDPSocket->getFD(),
-		filename,
-		276,
-		0,
-		clientAddressPtr,
-		&clientAddressLen
-	);
-
-
-	// Probably wanna check that nBytesReceived correlates with value in header
-	if (nBytesRcvd == -1)
+	nBytesRcvd = -1;
+	while (nBytesRcvd == -1)
 	{
-		cout << "Failure.\n";
-		return '\0';
+		nBytesRcvd = recvfrom
+		(
+			UDPSocket->getFD(),
+			filename,
+			276,
+			0,
+			clientAddressPtr,
+			&clientAddressLen
+		);
 	}
 
 	filename[nBytesRcvd] = '\0';
@@ -496,19 +528,19 @@ std::string UDPServer::getFileRequest()
 		in.clear();
 		in.close();
 
-		nBytesRcvd = recvfrom
-		(
-			UDPSocket->getFD(),
-			filename,
-			276,
-			0,
-			clientAddressPtr,
-			&clientAddressLen
-		);
-
-		// Probably wanna check that nBytesReceived correlates with value in header
-		if (nBytesRcvd == -1)
-			return '\0';
+		nBytesRcvd = -1;
+		while (nBytesRcvd == -1)
+		{
+			nBytesRcvd = recvfrom
+			(
+				UDPSocket->getFD(),
+				filename,
+				276,
+				0,
+				clientAddressPtr,
+				&clientAddressLen
+			);
+		}
 
 		filename[nBytesRcvd] = '\0';
 		cout << "Filename Received: ";
@@ -576,7 +608,7 @@ void UDPServer::instantiateOctoMonocto()
 
 
 // data must be null terminated
-void UDPServer::attachHeader(unsigned char octolegFlag, unsigned short payloadSize, unsigned char* data)
+void UDPServer::attachHeader(char octolegFlag, unsigned short payloadSize, unsigned char* data)
 {
 	struct sockaddr_in serverAddress;
 	unsigned short serverPort;
@@ -614,10 +646,10 @@ void UDPServer::attachHeader(unsigned char octolegFlag, unsigned short payloadSi
 
 
 	// Packet Len
-	//	if (octolegFlag == NULL)
+	if (octolegFlag == -1)
 	packetLen = payloadSize + HEADER_SIZE_BYTES;
-	//	else
-	//		packetLen = (unsigned short)octolegFlag;
+	else
+		packetLen = (unsigned short)octolegFlag;
 
 	cout << "Packet Len: " << packetLen << endl;
 	firstHalf = packetLen >> 8;
@@ -708,28 +740,20 @@ unsigned short UDPServer::computeChecksum(const unsigned char* data, const char*
 	// Begin Source IP
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
 	i = atoi(worker.c_str());
-	//	cout << i << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-	//	cout << atoi(worker.c_str()) << endl;
 	i = (i << 8) | atoi(worker.c_str());
 	cout << "I: " << i << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 
 
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
 	j = atoi(worker.c_str());
-	//	cout << j << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-	//	cout << atoi(worker.c_str()) << endl;
 	j = (j << 8) | atoi(worker.c_str());
 	cout << "J: " << j << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 
 
 	sum = i + j;
@@ -739,28 +763,19 @@ unsigned short UDPServer::computeChecksum(const unsigned char* data, const char*
 	// Begin Dest IP
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
 	i = atoi(worker.c_str());
-	//	cout << i << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-	//	cout << atoi(worker.c_str()) << endl;
 	i = (i << 8) | atoi(worker.c_str());
-	cout << "I: " << i << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 
 	sum = sum + i;
 
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
 	i = atoi(worker.c_str());
-	//	cout << i << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
-	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
-	//	cout << atoi(worker.c_str()) << endl;
 	i = (i << 8) | atoi(worker.c_str());
 	cout << "I: " << i << endl;
-	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 
 	sum = sum + i;
 	// End Dest IP
@@ -776,10 +791,6 @@ unsigned short UDPServer::computeChecksum(const unsigned char* data, const char*
 
 
 	// Begin UDP Length (Pseudo header length field)
-	//	udpPacketData = string(data + HEADER_SIZE_BYTES);
-	//	cout << "Packet Len First Half: " << (unsigned int)data[4] << endl;
-	//	cout << "Packet Len Secnd Half: " << (unsigned int)data[5] << endl;
-
 	i = ((data[4] << 8) | data[5]);//HEADER_SIZE_BYTES + udpPacketData.length();
 	sum = sum + i;
 	cout << "SUM After Length: " << sum << endl;
@@ -799,19 +810,13 @@ unsigned short UDPServer::computeChecksum(const unsigned char* data, const char*
 	cout << "SUM After Dst Port: " << sum << endl;
 	// End Dst Port
 
-	// Begin UDP Length (UDP header length field)
-	//	udpPacketData = string(data + HEADER_SIZE_BYTES);
 
-	//	cout << "Data in Client compute checksum:\n" << udpPacketData << endl;
 
 	i = ((data[4] << 8) | data[5]);// HEADER_SIZE_BYTES + udpPacketData.length();
 	sum = sum + i;
 	cout << "SUM After Length: " << sum << endl;
 	// End UDP Length
 
-	//	cout << "UDP Packet: " << udpPacketData << endl;
-
-	//	cout << "UDP Packet Len: " << udpPacketData.length() << endl;
 
 	unsigned short packetLen = ((data[4] << 8) | data[5]);
 	char c;

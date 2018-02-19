@@ -39,7 +39,7 @@ private:
 	int fullOctolegSize = 1111;
 
 
-	TaskQueue* taskQ;
+//	TaskQueue* taskQ;
 	pthread_mutex_t socketMutex;
 	pthread_mutex_t generalMutex;
 	unsigned short numOctoblocksReceived;
@@ -50,8 +50,8 @@ private:
 	string askUserForFilename();
 	bool parseOctoDescripto(const unsigned char* octoDescripto);
 
-	bool sendAck(unsigned char id);
-	void attachHeader(unsigned char octolegFlag, unsigned short payloadSize, unsigned char* data);
+	bool sendAck(char id);
+	void attachHeader(char octolegFlag, unsigned short payloadSize, unsigned char* data);
 	unsigned short computeChecksum(const unsigned char* data, const char* serverIP, unsigned int serverPort);
-	void receiveMssg(char *buffer, unsigned short mssgLen);
+	void receiveMssg(unsigned char *buffer, unsigned short mssgLen);
 };

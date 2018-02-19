@@ -21,8 +21,8 @@ UDPClient::~UDPClient()
 	if (incomingOctodata != NULL)
 		delete[] incomingOctodata;
 
-	if (taskQ != NULL)
-		delete taskQ;
+//	if (taskQ != NULL)
+//		delete taskQ;
 	
 	pthread_mutex_destroy(&socketMutex);
 	pthread_mutex_destroy(&generalMutex);
@@ -45,7 +45,9 @@ struct sockaddr_in UDPClient::getAddress()
 {
 	struct sockaddr_in addr;
 
+	pthread_mutex_lock(&socketMutex);
 	UDPSocket->getAddress(addr);
+	pthread_mutex_unlock(&socketMutex);
 
 	return addr;
 }
@@ -55,7 +57,7 @@ struct sockaddr_in UDPClient::getAddress()
 UDPClient::UDPClient(short family, short type, short protocol, unsigned int port, unsigned int serverPort)
 {
 	UDPSocket = new Socket();
-	taskQ = new TaskQueue();
+//	taskQ = new TaskQueue();
 
 	struct sockaddr_in address;
 
@@ -139,9 +141,11 @@ void* UDPClient::clientThread(void* id)
 	uint8_t octolegID;
 
 	UDPClient* client = ((UDPClient*)id);
-	octolegID = client->taskQ->getTask(client->numOctoblocksReceived);
+//	octolegID = client->taskQ->getTask(client->numOctoblocksReceived);
 
-	
+	// Client shouldn't need a task q.
+	// Threads receive messages and identify where to store them via the octoleg flag.
+	// Need a condition variable to wait on until entire octoblock is processed before threads move to next one.
 
 	while (octolegID < 8)
 	{
@@ -190,12 +194,12 @@ void* UDPClient::clientThread(void* id)
 		if (client->numOctolegsReceived % 8 == 0)
 		{
 			client->numOctoblocksReceived++;
-			client->taskQ->nextOctoblock();
+//			client->taskQ->nextOctoblock();
 		}
 		pthread_mutex_unlock(&client->generalMutex);
 
 
-		octolegID = client->taskQ->getTask(client->numOctoblocksReceived);
+//		octolegID = client->taskQ->getTask(client->numOctoblocksReceived);
 	}
 
 
@@ -222,20 +226,18 @@ void UDPClient::commenceOctovation()
 	}
 
 	// Receive Octo Descripto.
-	nBytesRcvd = recvfrom
-	(
-		UDPSocket->getFD(),
-		rcvMssg,
-		1200,
-		0,
-		serverAddressPtr,
-		&serverAddressLen
-	);
-
-	if (nBytesRcvd == -1)
+	nBytesRcvd = -1;
+	while (nBytesRcvd == -1)
 	{
-		cout << "Failure receiving Octo Descripto.. exiting.\n";
-		return;
+		nBytesRcvd = recvfrom
+		(
+			UDPSocket->getFD(),
+			rcvMssg,
+			1200,
+			0,
+			serverAddressPtr,
+			&serverAddressLen
+		);
 	}
 
 	cout << "Octo Descripto Received:\n";
@@ -244,8 +246,6 @@ void UDPClient::commenceOctovation()
 		cout << rcvMssg[i];
 	cout << endl;
 
-
-
 	rcvdChecksum = ((rcvMssg[6] << 8) | rcvMssg[7]);
 	cout << "Received Checksum: " << rcvdChecksum << endl;
 
@@ -253,9 +253,13 @@ void UDPClient::commenceOctovation()
 	cout << "Checksum Computed: " << checksum << endl;
 
 	if (checksum == rcvdChecksum)
-		sendAck(0);
-
-	// While checksum not valid || parse NOT OK, receive message -- parse should be OK if checksum valid.
+		sendAck(-1);
+	else
+	{
+		// Should actually just receive until checksum is valid.
+		cout << "Octo Descripto checksum failed.\n";
+		return;
+	}
 
 	// Build Octo Monocto.
 	bool octoDescriptoOk = parseOctoDescripto(rcvMssg);
@@ -287,53 +291,115 @@ void UDPClient::commenceOctovation()
 
 	cout << "Num Total Octoblocks: " << numTotalOctoblocks << endl;
 
-	for (uint8_t i = 0; i < numTotalOctoblocks; i++)
-		for (uint8_t j = 0; j < N_OCTOLEGS_PER_OCTOBLOCK; j++)
-			taskQ->putTask(j);
-
-	taskQ->setWorkFinished(true);
-
-
-
-	// Start threads.
-	pthread_t* threads;
-	threads = new pthread_t[N_THREADS];
-	long status;
-	long i;
-	for (i = 0; i < N_THREADS; i++)
-	{
-//		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPClient::clientThread, (void*)i);
-		status = pthread_create(&threads[i], NULL, &(this->clientThread), (void*)this);
-		if (status != 0)
-		{
-			std::cout << "Creation of thread resulted in error.\n";
-			exit(-1);
-		}
-	}
-
-
-
-	for (i = 0; i < 8; i++)
-		pthread_join(threads[i], NULL);
-
-
-	delete[] threads;
+//	// Start threads.
+//	pthread_t* threads;
+//	threads = new pthread_t[N_THREADS];
+//	long status;
+//	long i;
+//	for (i = 0; i < N_THREADS; i++)
+//	{
+////		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPClient::clientThread, (void*)i);
+//		status = pthread_create(&threads[i], NULL, &(this->clientThread), (void*)this);
+//		if (status != 0)
+//		{
+//			std::cout << "Creation of thread resulted in error.\n";
+//			exit(-1);
+//		}
+//	}
+//
+//
+//	for (i = 0; i < 8; i++)
+//		pthread_join(threads[i], NULL);
+//
+//
+//	delete[] threads;
 
 
 	return;
 }
 
 
+void UDPClient::receiveMssg(unsigned char *buffer, unsigned short mssgLen)
+{
+	int nBytesRcvd;
+	bool rcvdOK = false;
+	unsigned char rcvMssg[1200];
+	unsigned short rcvdChecksum;
+	unsigned char octolegFlag;
+	unsigned short checksum;
+
+	// Receive message.
+	memset(rcvMssg, 0, 1200);
+	pthread_mutex_lock(&socketMutex);
+	nBytesRcvd = recvfrom
+	(
+		UDPSocket->getFD(),
+		rcvMssg,
+		mssgLen,
+		0,
+		serverAddressPtr,
+		&serverAddressLen
+	);
+	pthread_mutex_unlock(&socketMutex);
 
 
-bool UDPClient::sendAck(unsigned char id)
+	// Here we need to be able to receive and discard duplicate messages.
+	// When a message is received, set a flag for the octoleg it corresponds to and exit thread after copying data.
+	// When a message is received, check the flags -- if set, resend ack for that message but do not process mssg.
+	// 
+
+	while (!rcvdOK)
+	{
+		checksum = 0;
+		rcvdChecksum = 1;
+
+		if (nBytesRcvd != -1)
+		{
+			rcvMssg[nBytesRcvd] = '\0';
+
+			rcvdChecksum = ((rcvMssg[6] << 8) | rcvMssg[7]);
+			cout << "Received Octoleg Checksum: " << rcvdChecksum << endl;
+
+			checksum = computeChecksum(rcvMssg, inet_ntoa(serverAddress.sin_addr), serverAddress.sin_port);
+			cout << "Checksum Computed: " << checksum << endl;
+
+			octolegFlag = rcvMssg[5];
+		}
+
+		if (checksum == rcvdChecksum)
+		{
+			rcvdOK = true;
+			sendAck(octolegFlag);
+		}
+		else
+		{
+			// Receive message.
+			memset(rcvMssg, 0, 1200);
+			pthread_mutex_lock(&socketMutex);
+			nBytesRcvd = recvfrom
+			(
+				UDPSocket->getFD(),
+				rcvMssg,
+				mssgLen,
+				0,
+				serverAddressPtr,
+				&serverAddressLen
+			);
+			pthread_mutex_unlock(&socketMutex);
+		}
+	}
+
+}
+
+bool UDPClient::sendAck(char id)
 {
 	unsigned char ack[ACK_SIZE_BYTES + 1];
 
 	ack[0] = id;
 	ack[1] = '\0';
-	attachHeader('\0', 1, ack);
+	attachHeader(id, 1, ack);
 
+	pthread_mutex_lock(&socketMutex);
 	sendto
 	(
 		UDPSocket->getFD(),
@@ -343,13 +409,14 @@ bool UDPClient::sendAck(unsigned char id)
 		(const sockaddr*)(&serverAddress),
 		sizeof(serverAddress)
 	);
+	pthread_mutex_unlock(&socketMutex);
 }
 
 
 
 
 // data must be null terminated
-void UDPClient::attachHeader(unsigned char octolegFlag, unsigned short payloadSize, unsigned char* data)
+void UDPClient::attachHeader(char octolegFlag, unsigned short payloadSize, unsigned char* data)
 {
 	struct sockaddr_in clientAddress;
 	unsigned short serverPort;
@@ -359,8 +426,6 @@ void UDPClient::attachHeader(unsigned char octolegFlag, unsigned short payloadSi
 	unsigned char firstHalf;
 	unsigned char secondHalf;
 	unsigned char* header = new unsigned char[9];
-
-
 
 	UDPSocket->getAddress(clientAddress);
 
@@ -386,10 +451,10 @@ void UDPClient::attachHeader(unsigned char octolegFlag, unsigned short payloadSi
 
 
 	// Packet Len
-	//	if (octolegFlag == NULL)
-	packetLen = payloadSize + HEADER_SIZE_BYTES;
-	//	else
-	//		packetLen = (unsigned short)octolegFlag;
+	if (octolegFlag == -1)
+		packetLen = payloadSize + HEADER_SIZE_BYTES;
+	else
+		packetLen = (unsigned short)octolegFlag;
 
 	cout << "Packet Len: " << packetLen << endl;
 	firstHalf = packetLen >> 8;
@@ -475,18 +540,19 @@ string UDPClient::askUserForFilename()
 		sizeof(serverAddress)
 	);
 
-	cout << "Sent.\n";
-
-
-	nBytesRcvd = recvfrom
-	(
-		UDPSocket->getFD(),
-		confirmation,
-		23,
-		0,
-		serverAddressPtr,
-		&serverAddressLen
-	);
+	nBytesRcvd = -1;
+	while (nBytesRcvd == -1)
+	{
+		nBytesRcvd = recvfrom
+		(
+			UDPSocket->getFD(),
+			confirmation,
+			23,
+			0,
+			serverAddressPtr,
+			&serverAddressLen
+		);
+	}
 
 	cout << "Confirmation Received: ";
 	confirmation[nBytesRcvd] = '\0';
@@ -495,12 +561,6 @@ string UDPClient::askUserForFilename()
 	cout << endl;
 
 	// validate checksum.
-
-	if (nBytesRcvd == -1)
-	{
-		cout << "Failure receiving confirmation, try again or try another file.\n";
-		return '\0';
-	}
 
 	confirmationStr = string((char*)confirmation);
 	while (confirmationStr.compare("OK") != 0)
@@ -518,15 +578,19 @@ string UDPClient::askUserForFilename()
 			sizeof(serverAddress)
 		);
 
-		nBytesRcvd = recvfrom
-		(
-			UDPSocket->getFD(),
-			confirmation,
-			23,
-			0,
-			serverAddressPtr,
-			&serverAddressLen
-		);
+		nBytesRcvd = -1;
+		while (nBytesRcvd == -1)
+		{
+			nBytesRcvd = recvfrom
+			(
+				UDPSocket->getFD(),
+				confirmation,
+				23,
+				0,
+				serverAddressPtr,
+				&serverAddressLen
+			);
+		}
 
 		confirmation[nBytesRcvd] = '\0';
 		for (int i = 0; i < nBytesRcvd; i++)
