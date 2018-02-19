@@ -25,6 +25,8 @@ UDPServer::~UDPServer()
 
 	if (taskQ != NULL)
 		delete taskQ;
+
+	pthread_mutex_destroy(&socketMutex);
 }
 
 
@@ -84,6 +86,8 @@ UDPServer::UDPServer(short family, short type, short protocol, unsigned int port
 	currentOctoblock = 0;
 	for (uint8_t i = 0; i < 8; i++)
 		taskQ->putTask(i);
+
+	pthread_mutex_init(&socketMutex, NULL);
 }
 
 
@@ -181,7 +185,7 @@ void* UDPServer::serverThread(void* id)
 
 		startPos = (server->currentOctoblock * 8888) + (octolegID * server->fullOctolegSize);
 		octolegSize = server->fullOctolegSize;
-		memcpy(octoleg, (char*)(server->octoblockData[startPos]), octolegSize);
+		memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
 	}
 	else if (server->currentOctoblock == server->octoMonocto.numFullOctoblocks)
 	{
@@ -192,7 +196,7 @@ void* UDPServer::serverThread(void* id)
 			(server->octoMonocto.numFullOctoblocks * 8888) +
 			(octolegID * server->octoMonocto.partialOctolegSize);
 		octolegSize = server->octoMonocto.partialOctolegSize;
-		memcpy(octoleg, (char*)(server->octoblockData[startPos]), octolegSize);
+		memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
 	}
 	else
 	{
@@ -204,7 +208,7 @@ void* UDPServer::serverThread(void* id)
 			(server->octoMonocto.partialOctolegSize * 8)	+
 			(octolegID * 1);
 		octolegSize = 1;
-		memcpy(octoleg, (char*)(server->octoblockData[startPos]), octolegSize);
+		memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
 	}
 
 	
@@ -357,6 +361,7 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 	unsigned char ack[ACK_SIZE_BYTES + 1];
 	bool ackOK = false;
 
+	pthread_mutex_lock(&socketMutex);
 	sendto
 	(
 		UDPSocket->getFD(),
@@ -366,10 +371,13 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 		clientAddressPtr,
 		clientAddressLen
 	);
+	pthread_mutex_unlock(&socketMutex);
 
 	usleep(timeoutMsec);
 
 	memset(ack, 0, ACK_SIZE_BYTES);
+
+	pthread_mutex_lock(&socketMutex);
 	nBytesRcvd = recvfrom
 	(
 		UDPSocket->getFD(),
@@ -379,6 +387,7 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 		clientAddressPtr,
 		&clientAddressLen
 	);
+	pthread_mutex_unlock(&socketMutex);
 
 	while (!ackOK)
 	{
@@ -401,6 +410,7 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 		}
 		else
 		{
+			pthread_mutex_lock(&socketMutex);
 			sendto
 			(
 				UDPSocket->getFD(),
@@ -410,10 +420,12 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 				clientAddressPtr,
 				clientAddressLen
 			);
+			pthread_mutex_unlock(&socketMutex);
 
 			usleep(timeoutMsec);
 
 			memset(ack, 0, ACK_SIZE_BYTES);
+			pthread_mutex_lock(&socketMutex);
 			nBytesRcvd = recvfrom
 			(
 				UDPSocket->getFD(),
@@ -423,7 +435,7 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 				clientAddressPtr,
 				&clientAddressLen
 			);
-
+			pthread_mutex_unlock(&socketMutex);
 		}
 	}
 

@@ -52,7 +52,7 @@ private:
 
 
 	TaskQueue* taskQ;
-
+	pthread_mutex_t socketMutex;
 	static void* serverThread(void* id);
 	unsigned short currentOctoblock;
 
