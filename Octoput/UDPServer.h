@@ -1,6 +1,6 @@
 #pragma once
 #include "Socket.h"
-
+#include <time.h>
 
 
 // It may be more elegant to maintain a request queue in the server that the sloxy can 
@@ -54,7 +54,6 @@ private:
 	std::string *octoblocks;
 
 
-	std::string constructHeader(char octolegFlag, short packetSize, const char* data);
 
 
 	std::string getFileRequest();
@@ -63,7 +62,9 @@ private:
 
 
 
-	unsigned short computeChecksum(const char* data, const char* clientIP, unsigned int clientPort);
+	void attachHeader(unsigned char octolegFlag, unsigned short payloadSize, char* data);
+
+	unsigned short computeChecksum(const unsigned char* data, const char* clientIP, unsigned int clientPort);
 };
 
 

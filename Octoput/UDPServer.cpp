@@ -2,7 +2,6 @@
 #include "UDPServer.h"
 
 
-
 using namespace std;
 
 #include <sstream>
@@ -54,7 +53,7 @@ struct sockaddr_in UDPServer::getAddress()
 UDPServer::UDPServer(short family, short type, short protocol, unsigned int port, unsigned int clientPort)
 {
 	UDPSocket = new Socket();
-	sockaddr_in address;
+	struct sockaddr_in address;
 
 	if (!UDPSocket->initSocket(family, type, protocol))
 	{
@@ -157,7 +156,10 @@ void UDPServer::commenceOctovation()
 	string filename = getFileRequest();
 	string octoDescripto;
 	string confirmation = "OK";
-	sockaddr_in serverAddress;
+	string headerStr;
+	unsigned char sendMssg[1200];
+
+//	struct sockaddr_in serverAddress;
 
 	cout << "Filename good.\n";
 
@@ -191,7 +193,7 @@ void UDPServer::commenceOctovation()
 	instantiateOctoMonocto();
 	instantiateOctoblocks();
 
-	UDPSocket->getAddress(serverAddress);
+//	UDPSocket->getAddress(serverAddress);
 
 	
 	octoDescripto =
@@ -201,104 +203,130 @@ void UDPServer::commenceOctovation()
 		"Size Of Partial Octolegs: " + to_string(octoMonocto.partialOctolegSize) + "\r\n" +
 		"Size Of Leftover Data: " + to_string(octoMonocto.leftoverDataSize) + "\r\n";
 
-	cout << "Server Port: " << ntohs(serverAddress.sin_port) << endl;
+//	cout << "Server Port: " << ntohs(serverAddress.sin_port) << endl;
 
 	// Not right because string versions of these quantities will be 1 byte per digit.
 	// not sure on the use of ntohs
 
-	unsigned short serverPort;
-	unsigned short clientPort;
-	unsigned short packetLen;
-	unsigned short checksum;
-	unsigned char firstHalf;
-	unsigned char secondHalf;
-	unsigned char* header = new unsigned char[9];
-	unsigned char sendMssg[1200];
 
-	// Server Port
-	serverPort = serverAddress.sin_port;
-	cout << "ServerPort: " << serverPort << endl;
-	cout << "Server IP: " << inet_ntoa(serverAddress.sin_addr) << endl;
-	firstHalf = serverPort >> 8;
-	secondHalf = serverPort & 0xFF;
+//	headerStr = constructHeader('0', octoDescripto.length(), octoDescripto.c_str());
+
+//	cout << "Header Str: " << headerStr << endl;
+
+//	memcpy(sendMssg, headerStr.c_str(), HEADER_SIZE_BYTES);
+	memcpy(sendMssg, octoDescripto.c_str(), octoDescripto.length());
+	sendMssg[octoDescripto.length()] = '\0';
+	attachHeader('\0', octoDescripto.length(), (char*)sendMssg);
 
 
-	header[0] = firstHalf;
-	header[1] = secondHalf;
 
 
-	// Client Port
-	clientPort = clientAddress.sin_port;
-	cout << "ClientPort: " << clientAddress.sin_port << endl;
-	firstHalf = clientPort >> 8;
-	secondHalf = clientPort & 0xFF;
-
-	header[2] = firstHalf;
-	header[3] = secondHalf;
-
-
-	// Packet Len
-	packetLen = octoDescripto.length() + 8;
-	cout << "Packet Len: " << packetLen << endl;
-	firstHalf = packetLen >> 8;
-	secondHalf = packetLen & 0xFF;
-
-	cout << "Packet Len First Half: " << (int)firstHalf << endl;
-	cout << "Packet Len Secnd Half: " << (int)secondHalf << endl;
-
-	header[4] = firstHalf;
-	header[5] = secondHalf;
-
-	cout << "Client IP: " << inet_ntoa(clientAddress.sin_addr) << endl;
-
-	// Checksum
-	checksum = computeChecksum
-	(
-		octoDescripto.c_str(),
-		inet_ntoa(clientAddress.sin_addr),
-		(unsigned int)(clientAddress.sin_port)
-	);
-	
-	cout << "Checksum: " << checksum << endl;
-
-	firstHalf = checksum >> 8;
-	secondHalf = checksum & 0xFF;
-
-	header[6] = firstHalf;
-	header[7] = secondHalf;
-
-	header[8] = '\0';
-
-
-	for (int i = 0; i < 9; i++)
-	{
-		cout << "Index: " << i << " = " << (unsigned int)header[i] << endl;
-	}
-
-
-	string headerStr((const char*)header);
-
-	memcpy(sendMssg, header, 8);
-	memcpy(sendMssg + 8, octoDescripto.c_str(), octoDescripto.length());
-
-	cout << "Octo Descripto being sent as:\n";
-	for (int i = 0; i < packetLen; i++)
-	{
-		cout << "Index: " << i << " = " << (unsigned int)sendMssg[i] << endl;
-	}
+//	cout << "Octo Descripto being sent as:\n";
+//	for (int i = 0; i < packetLen; i++)
+//	{
+//		cout << "Index: " << i << " = " << (unsigned int)sendMssg[i] << endl;
+//	}
 
 
 	sendto
 	(
 		UDPSocket->getFD(),
 		sendMssg,
-		packetLen,
+		octoDescripto.length() + HEADER_SIZE_BYTES,
 		0,
 		clientAddressPtr,
 		clientAddressLen
 	);
 
+/*
+	pthread_mutex_t queueMutex;
+	pthread_cond_t queueEmpty;
+	pthread_mutex_init(&queueMutex, NULL);
+	pthread_cond_init(&queueEmpty, NULL);
+	pthread_mutex_destroy(&queueMutex);
+	pthread_cond_destroy(&queueEmpty);
+
+
+	pthread_mutex_lock(&queueMutex);
+	numberQueue.push(n);
+	pthread_cond_signal(&queueEmpty);
+	pthread_mutex_unlock(&queueMutex);
+
+	pthread_mutex_lock(&queueMutex);
+	pthread_cond_wait(&queueEmpty, &queueMutex);
+	pthread_mutex_unlock(&queueMutex);
+*/
+
+	//clock_t before;
+	//double elapsed;
+
+	//before = clock();
+
+//	sleep(1);
+
+	usleep(100000); // 100 000 usec = 100 msec
+
+
+	int nBytesRcvd;
+	unsigned short checksum;
+	unsigned short rcvdChecksum;
+	string ackStr;
+	char ack[32];
+	bool ackOK = false;
+
+	nBytesRcvd = recvfrom
+	(
+		UDPSocket->getFD(),
+		ack,
+		32,
+		0,
+		clientAddressPtr,
+		&clientAddressLen
+	);
 	
+	while (!ackOK)
+	{
+		if (nBytesRcvd == -1)
+		{
+			cout << "No ACK received.\n";
+		}
+		else
+		{
+			rcvdChecksum = ((ack[6] << 8) | ack[7]);
+			cout << "Received Checksum: " << rcvdChecksum << endl;
+			
+			ack[nBytesRcvd] = '\0';
+			cout << "ACK Received: ";
+			for (int i = 0; i < nBytesRcvd; i++)
+				cout << ack[i];
+			cout << " of length: " << nBytesRcvd << endl;
+
+			checksum = computeChecksum((unsigned char*)ack, inet_ntoa(clientAddress.sin_addr), clientAddress.sin_port);
+			cout << "Checksum Computed: " << checksum << endl;
+
+			if (checksum == rcvdChecksum)
+				ackOK = true;
+			else
+			{
+				sendto
+				(
+					UDPSocket->getFD(),
+					sendMssg,
+					octoDescripto.length() + HEADER_SIZE_BYTES,
+					0,
+					clientAddressPtr,
+					clientAddressLen
+				);
+			}
+		}
+	}
+	// Start timer, when expired, try to receive ack.
+	// While invalid or not received, resend octo descripto.
+	
+	//elapsed = clock() - before;
+
+	//cout << "Time elapsed: " << elapsed / CLOCKS_PER_SEC << " seconds.\n";
+
 	return;
 }
 
@@ -311,7 +339,6 @@ std::string UDPServer::getFileRequest()
 	char filename[276];
 	cout << "Received.\n";
 
-	cout << "ClientPort Before Rcv: " << clientAddress.sin_port << endl;
 	nBytesRcvd = recvfrom
 	(
 		UDPSocket->getFD(),
@@ -321,7 +348,6 @@ std::string UDPServer::getFileRequest()
 		clientAddressPtr,
 		&clientAddressLen
 	);
-	cout << "ClientPort After Rcv: " << clientAddress.sin_port << endl;
 
 
 	// Probably wanna check that nBytesReceived correlates with value in header
@@ -346,6 +372,7 @@ std::string UDPServer::getFileRequest()
 
 	while ((filenameStr.compare("quit") != 0) && !in.good())
 	{
+		in.clear();
 		in.close();
 
 		nBytesRcvd = recvfrom
@@ -444,25 +471,107 @@ void UDPServer::instantiateOctoblocks()
 
 
 
-
-std::string UDPServer::constructHeader(char octolegFlag, short packetSize, const char* data)
+// data must be null terminated
+void UDPServer::attachHeader(unsigned char octolegFlag, unsigned short payloadSize, char* data)
 {
-	string headerStr;
-	int checksum;
+	struct sockaddr_in serverAddress;
+	unsigned short serverPort;
+	unsigned short clientPort;
+	unsigned short packetLen;
+	unsigned short checksum;
+	unsigned char firstHalf;
+	unsigned char secondHalf;
+	unsigned char* header = new unsigned char[9];
 
-	headerStr = octolegFlag + to_string(packetSize) + string(data);
-//	checksum = computeChecksum(headerStr.c_str());
 
-	return headerStr + to_string(checksum);
+
+	UDPSocket->getAddress(serverAddress);
+
+	// Server Port
+	serverPort = serverAddress.sin_port;
+	cout << "ServerPort: " << serverPort << endl;
+	cout << "Server IP: " << inet_ntoa(serverAddress.sin_addr) << endl;
+	firstHalf = serverPort >> 8;
+	secondHalf = serverPort & 0xFF;
+
+
+	header[0] = firstHalf;
+	header[1] = secondHalf;
+
+
+	// Client Port
+	clientPort = clientAddress.sin_port;
+	cout << "ClientPort: " << clientAddress.sin_port << endl;
+	firstHalf = clientPort >> 8;
+	secondHalf = clientPort & 0xFF;
+
+	header[2] = firstHalf;
+	header[3] = secondHalf;
+
+
+	// Packet Len
+	//	if (octolegFlag == '\0')
+	packetLen = payloadSize + HEADER_SIZE_BYTES;
+	//	else
+	//		packetLen = (unsigned short)octolegFlag;
+
+	cout << "Packet Len: " << packetLen << endl;
+	firstHalf = packetLen >> 8;
+	secondHalf = packetLen & 0xFF;
+
+	cout << "Packet Len First Half: " << (int)firstHalf << endl;
+	cout << "Packet Len Secnd Half: " << (int)secondHalf << endl;
+	header[4] = firstHalf;
+	header[5] = secondHalf;
+
+
+	//	cout << "Client IP: " << inet_ntoa(clientAddress.sin_addr) << endl;
+
+
+	string dataStr(data);
+
+	header[6] = header[7] = 0;
+	memcpy(data, header, HEADER_SIZE_BYTES);
+	memcpy(data + HEADER_SIZE_BYTES, dataStr.c_str(), dataStr.length());
+
+
+	// Checksum
+	checksum = computeChecksum
+	(
+		(unsigned char*)data,
+		inet_ntoa(clientAddress.sin_addr),
+		(unsigned int)(clientAddress.sin_port)
+	);
+
+	cout << "Checksum in constructHeader(): " << checksum << endl;
+
+	firstHalf = checksum >> 8;
+	secondHalf = checksum & 0xFF;
+
+	header[6] = firstHalf;
+	header[7] = secondHalf;
+
+	memcpy(data + 6, header + 6, 2);
+
+	header[8] = '\0';
+
+
+	for (int i = 0; i < 9; i++)
+	{
+		cout << "Index: " << i << " = " << (unsigned int)header[i] << endl;
+	}
+
+
+	delete[] header;
 }
 
 
 
 
 
+// data must be null terminated.
 
-
-unsigned short UDPServer::computeChecksum(const char* data, const char* clientIP, unsigned int clientPort)
+unsigned short UDPServer::computeChecksum(const unsigned char* data, const char* clientIP, unsigned int clientPort)
 {
 	sockaddr_in serverAddress;
 	string pseudoHeaderIPs;
@@ -510,7 +619,7 @@ unsigned short UDPServer::computeChecksum(const char* data, const char* clientIP
 
 
 	sum = i + j;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Src IP: " << sum << endl;
 
 
 	// Begin Dest IP
@@ -542,63 +651,77 @@ unsigned short UDPServer::computeChecksum(const char* data, const char* clientIP
 	sum = sum + i;
 	// End Dest IP
 
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Dst IP: " << sum << endl;
 
 
 	// Begin Protocol
 	i = 17;
 	sum = sum + i;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Protocol: " << sum << endl;
 	// End Protocol
 
 
-	// Begin UDP Length
-	udpPacketData = string(data);
-	i = 8 + udpPacketData.length();
+	// Begin UDP Length (Pseudo header length field)
+	//	udpPacketData = string(data + HEADER_SIZE_BYTES);
+	//	cout << "Packet Len First Half: " << (unsigned int)data[4] << endl;
+	//	cout << "Packet Len Secnd Half: " << (unsigned int)data[5] << endl;
+
+	i = ((data[4] << 8) | data[5]);//HEADER_SIZE_BYTES + udpPacketData.length();
 	sum = sum + i;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Length: " << sum << endl;
 	// End UDP Length
 
 
 	// Begin Src Port
-	i = serverAddress.sin_port;
+	i = ((data[0] << 8) | data[1]);
 	i = 20;
 	sum = sum + i;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Src Port: " << sum << endl;
 	// End Src Port
 
 	// Begin Dst Port
-	i = clientPort;
+	i = ((data[2] << 8) | data[3]);
 	sum = sum + i;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Dst Port: " << sum << endl;
 	// End Dst Port
 
-	// Begin UDP Length
-	udpPacketData = string(data);
-	i = 8 + udpPacketData.length();
+	// Begin UDP Length (UDP header length field)
+	//	udpPacketData = string(data + HEADER_SIZE_BYTES);
+
+	//	cout << "Data in Client compute checksum:\n" << udpPacketData << endl;
+
+	i = ((data[4] << 8) | data[5]);// HEADER_SIZE_BYTES + udpPacketData.length();
 	sum = sum + i;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Length: " << sum << endl;
 	// End UDP Length
 
 	//	cout << "UDP Packet: " << udpPacketData << endl;
 
 	//	cout << "UDP Packet Len: " << udpPacketData.length() << endl;
 
+	unsigned short packetLen = ((data[4] << 8) | data[5]);
 	char c;
-	for (int x = 0; x < udpPacketData.length(); x += 2)
+	int x;
+	for (x = HEADER_SIZE_BYTES; x < (packetLen - 1); x += 2)
 	{
 		c = data[x];
 		i = (unsigned short)c;
-		//		cout << "I: " << i << endl;
 
 		c = data[x + 1];
-		//		cout << "I: " << (unsigned short)c << endl;
 		i = (i << 8) | (unsigned short)c;
-		//		cout << "I: " << i << endl;
 
 		sum = sum + i;
-		//		cout << "SUM: " << sum << endl;
 	}
+
+
+	if (x == (packetLen - 1))
+	{
+		i = (unsigned short)data[x];
+
+		i = (i << 8);
+		sum = sum + i;
+	}
+
 
 
 	checksum = oneComplementSum(sum);

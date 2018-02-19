@@ -46,6 +46,7 @@ struct sockaddr_in UDPClient::getAddress()
 UDPClient::UDPClient(short family, short type, short protocol, unsigned int port, unsigned int serverPort)
 {
 	UDPSocket = new Socket();
+	struct sockaddr_in address;
 
 	if (!UDPSocket->initSocket(family, type, protocol))
 	{
@@ -54,7 +55,14 @@ UDPClient::UDPClient(short family, short type, short protocol, unsigned int port
 	}
 	else
 	{
-		UDPSocket->associateAddress(port);
+		memset(&address, 0, sizeof(address));
+		address.sin_family = family;
+		address.sin_port = htons(port);
+		inet_pton(AF_INET, "127.0.0.1", &address.sin_addr);
+
+		UDPSocket->associateAddress(address);
+
+//		UDPSocket->associateAddress(port);
 		bindSocket();
 
 		serverAddress.sin_family = family;
@@ -111,6 +119,8 @@ void UDPClient::commenceOctovation()
 	string filenameOK = askUserForFilename();
 	int nBytesRcvd;
 	char rcvMssg[1200];
+	unsigned short rcvdChecksum;
+	unsigned short checksum;
 
 	if (filenameOK.compare("\0") == 0)
 	{
@@ -143,6 +153,14 @@ void UDPClient::commenceOctovation()
 
 
 
+	rcvdChecksum = ((rcvMssg[6] << 8) | rcvMssg[7]);
+	cout << "Received Checksum: " << rcvdChecksum << endl;
+
+	checksum = computeChecksum((unsigned char*)rcvMssg, inet_ntoa(serverAddress.sin_addr), serverAddress.sin_port);
+	cout << "Checksum Computed: " << checksum << endl;
+
+	// While checksum not valid || parse NOT OK, receive message -- parse should be OK if checksum valid.
+
 	// Build Octo Monocto.
 	bool octoDescriptoOk = parseOctoDescripto((unsigned char*)rcvMssg);
 
@@ -157,6 +175,8 @@ void UDPClient::commenceOctovation()
 			<< "Size Of Partial Octolegs: " << octoMonocto.partialOctolegSize << endl
 			<< "Size Of Leftover Data: " << octoMonocto.leftoverDataSize << endl;
 	}
+
+
 
 	return;
 }
@@ -203,6 +223,8 @@ string UDPClient::askUserForFilename()
 		cout << confirmation[i];
 	cout << endl;
 
+	// validate checksum.
+
 	if (nBytesRcvd == -1)
 	{
 		cout << "Failure receiving confirmation, try again or try another file.\n";
@@ -240,7 +262,8 @@ string UDPClient::askUserForFilename()
 			cout << confirmation[i];
 		cout << endl;
 
-		// Probably wanna check that nBytesReceived correlates with value in header
+		
+		// validate checksum.
 
 		if (nBytesRcvd == -1)
 			return '\0';
@@ -276,8 +299,9 @@ bool UDPClient::parseOctoDescripto(const unsigned char* octoDescripto)
 
 
 	octoDescriptoNoHeader = new char[packetLen - 7];
-	memcpy(octoDescriptoNoHeader, octoDescripto + 8, packetLen - 8);
+	memcpy(octoDescriptoNoHeader, octoDescripto + HEADER_SIZE_BYTES, packetLen - 7);
 
+//	octoDescriptoNoHeader[packetLen - HEADER_SIZE_BYTES] = '\0';
 	octoDescriptoStr = string(octoDescriptoNoHeader);
 
 	posA = octoDescriptoStr.find("Total Size Of File: ", 0);
@@ -425,7 +449,7 @@ bool UDPClient::validateChecksum(const char* data)
 
 
 
-unsigned short UDPClient::computeChecksum(const char* data, const char* serverIP, unsigned int serverPort)
+unsigned short UDPClient::computeChecksum(const unsigned char* data, const char* serverIP, unsigned int serverPort)
 {
 	sockaddr_in clientAddress;
 	string pseudoHeaderIPs;
@@ -473,7 +497,7 @@ unsigned short UDPClient::computeChecksum(const char* data, const char* serverIP
 
 
 	sum = i + j;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Src IP: " << sum << endl;
 
 
 	// Begin Dest IP
@@ -505,62 +529,75 @@ unsigned short UDPClient::computeChecksum(const char* data, const char* serverIP
 	sum = sum + i;
 	// End Dest IP
 
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Dst IP: " << sum << endl;
 
 
 	// Begin Protocol
 	i = 17;
 	sum = sum + i;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Protocol: " << sum << endl;
 	// End Protocol
 
 
-	// Begin UDP Length
-	udpPacketData = string(data);
-	i = 8 + udpPacketData.length();
+	// Begin UDP Length (Pseudo header length field)
+//	udpPacketData = string(data + HEADER_SIZE_BYTES);
+//	cout << "Packet Len First Half: " << (unsigned int)data[4] << endl;
+//	cout << "Packet Len Secnd Half: " << (unsigned int)data[5] << endl;
+
+	i = ((data[4] << 8) | data[5]);//HEADER_SIZE_BYTES + udpPacketData.length();
 	sum = sum + i;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Length: " << sum << endl;
 	// End UDP Length
 
 
 	// Begin Src Port
-	i = clientAddress.sin_port;
+	i = ((data[0] << 8) | data[1]);
 	i = 20;
 	sum = sum + i;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Src Port: " << sum << endl;
 	// End Src Port
 
 	// Begin Dst Port
-	i = serverPort;
+	i = ((data[2] << 8) | data[3]);
 	sum = sum + i;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Dst Port: " << sum << endl;
 	// End Dst Port
 
-	// Begin UDP Length
-	udpPacketData = string(data);
-	i = 8 + udpPacketData.length();
+	// Begin UDP Length (UDP header length field)
+//	udpPacketData = string(data + HEADER_SIZE_BYTES);
+
+//	cout << "Data in Client compute checksum:\n" << udpPacketData << endl;
+
+	i = ((data[4] << 8) | data[5]);// HEADER_SIZE_BYTES + udpPacketData.length();
 	sum = sum + i;
-	cout << "SUM: " << sum << endl;
+	cout << "SUM After Length: " << sum << endl;
 	// End UDP Length
 
 	//	cout << "UDP Packet: " << udpPacketData << endl;
 
 	//	cout << "UDP Packet Len: " << udpPacketData.length() << endl;
 
+	unsigned short packetLen = ((data[4] << 8) | data[5]);
 	char c;
-	for (int x = 0; x < udpPacketData.length(); x += 2)
+	int x;
+	for (x = HEADER_SIZE_BYTES; x < (packetLen - 1); x += 2)
 	{
 		c = data[x];
 		i = (unsigned short)c;
-		//		cout << "I: " << i << endl;
 
 		c = data[x + 1];
-		//		cout << "I: " << (unsigned short)c << endl;
 		i = (i << 8) | (unsigned short)c;
-		//		cout << "I: " << i << endl;
 
 		sum = sum + i;
-		//		cout << "SUM: " << sum << endl;
+	}
+
+
+	if (x == (packetLen - 1))
+	{
+		i = (unsigned short)data[x];
+
+		i = (i << 8);
+		sum = sum + i;
 	}
 
 
@@ -569,7 +606,7 @@ unsigned short UDPClient::computeChecksum(const char* data, const char* serverIP
 	if (checksum != 65535)
 		checksum = ~checksum;
 
-	cout << "Checksum: " << checksum << endl;
+//	cout << "Checksum: " << checksum << endl;
 
 	return checksum;
 }

@@ -41,5 +41,5 @@ private:
 	bool parseOctoDescripto(const unsigned char* octoDescripto);
 
 
-	unsigned short computeChecksum(const char* data, const char* serverIP, unsigned int serverPort);
+	unsigned short computeChecksum(const unsigned char* data, const char* serverIP, unsigned int serverPort);
 };
