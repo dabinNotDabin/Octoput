@@ -176,7 +176,7 @@ void* UDPServer::serverThread(void* id)
 {
 	unsigned short octolegSize;
 	unsigned char* octoleg;
-	unsigned short startPos;
+	unsigned int startPos;
 	unsigned short currentOctoblock = 0;
 	uint8_t octolegID;
 
@@ -193,9 +193,9 @@ void* UDPServer::serverThread(void* id)
 			cout << "Sending full octoblocks.\n";
 			octoleg = new unsigned char[server->fullOctolegSize + HEADER_SIZE_BYTES + 1];
 
-			startPos = (server->numOctoblocksTransferred * 8888) + (octolegID * server->fullOctolegSize);
+			startPos = (unsigned int)((unsigned int)server->numOctoblocksTransferred * (unsigned int)8888) + (unsigned int)((unsigned int)octolegID * (unsigned int)server->fullOctolegSize);
 			octolegSize = server->fullOctolegSize;
-			memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
+			memcpy(octoleg, &(server->octoblockData[(unsigned int)startPos]), octolegSize);
 		}
 		else if (server->numOctoblocksTransferred == server->octoMonocto.numFullOctoblocks)
 		{
@@ -204,10 +204,10 @@ void* UDPServer::serverThread(void* id)
 			octoleg = new unsigned char[server->octoMonocto.partialOctolegSize + HEADER_SIZE_BYTES + 1];
 
 			startPos =
-				(server->octoMonocto.numFullOctoblocks * 8888) +
-				(octolegID * server->octoMonocto.partialOctolegSize);
+				(unsigned int)(server->octoMonocto.numFullOctoblocks * 8888) +
+				(unsigned int)(octolegID * server->octoMonocto.partialOctolegSize);
 			octolegSize = server->octoMonocto.partialOctolegSize;
-			memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
+			memcpy(octoleg, &(server->octoblockData[(unsigned int)startPos]), octolegSize);
 		}
 		else
 		{
@@ -216,11 +216,11 @@ void* UDPServer::serverThread(void* id)
 			octoleg = new unsigned char[1 + HEADER_SIZE_BYTES + 1];
 
 			startPos =
-				(server->octoMonocto.numFullOctoblocks * 8888) +
-				(server->octoMonocto.partialOctoblockSize) +
-				(octolegID * 1);
+				(unsigned int)((unsigned int)server->octoMonocto.numFullOctoblocks * (unsigned int)8888) +
+				(unsigned int)(server->octoMonocto.partialOctoblockSize) +
+				(unsigned int)(octolegID * 1);
 			octolegSize = 1;
-			memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
+			memcpy(octoleg, &(server->octoblockData[(unsigned int)startPos]), octolegSize);
 
 			cout << octoleg[0] << " at pos: " << startPos << endl;
 		}
@@ -302,12 +302,9 @@ void UDPServer::commenceOctovation()
 	in.open(filename, ios::in | ios::binary);
 	fileContents = string((istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 	instantiateOctoMonocto();
-	cout << "Making array of size: " << octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)) << endl;
-//	octoblockData = new unsigned char [(unsigned int)(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
-	octoblockData = new unsigned char[(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
-	cout << "HERE: A\n";
+	octoblockData = new unsigned char [(unsigned int)(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
+//	octoblockData = new unsigned char[(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
 	octoblockData = (unsigned char*)fileContents.data();
-	cout << "HERE: A\n";
 
 	for (unsigned int i = octoMonocto.totalFileSize; i % 8 != 0; i++)
 		octoblockData[i] = '\0';
@@ -565,14 +562,14 @@ void UDPServer::instantiateOctoMonocto()
 	int partialOctolegSize;
 	int leftoverDataSize;
 
-	numFullOctoblocksNeeded = fileContents.length() / octoblockSize;
+	numFullOctoblocksNeeded = (unsigned int)fileContents.length() / octoblockSize;
 
 	// If partialOctoblockSize is not 0, have to send partial octoblock.
-	partialOctoblockSize = ((fileContents.length() % 8888) / 8) * 8;
+	partialOctoblockSize = ((((unsigned int)fileContents.length()) % 8888) / 8) * 8;
 
 	if (partialOctoblockSize != 0)
 	{
-		leftoverDataSize = (fileContents.length() % 8888) - partialOctoblockSize;
+		leftoverDataSize = (((unsigned int)fileContents.length()) % 8888) - partialOctoblockSize;
 		partialOctolegSize = partialOctoblockSize / 8;
 	}
 	else
@@ -590,11 +587,11 @@ void UDPServer::instantiateOctoMonocto()
 
 	octoMonocto =
 	{
-		(short)fileContents.length(),
-		(short)numFullOctoblocksNeeded,
-		(short)partialOctoblockSize,
-		(short)partialOctolegSize,
-		(short)leftoverDataSize
+		(unsigned int)fileContents.length(),
+		(unsigned int)numFullOctoblocksNeeded,
+		(unsigned int)partialOctoblockSize,
+		(unsigned int)partialOctolegSize,
+		(unsigned int)leftoverDataSize
 	};
 
 }
@@ -621,8 +618,8 @@ void UDPServer::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 
 	// Server Port
 	serverPort = serverAddress.sin_port;
-	cout << "ServerPort: " << serverPort << endl;
-	cout << "Server IP: " << inet_ntoa(serverAddress.sin_addr) << endl;
+//	cout << "ServerPort: " << serverPort << endl;
+//	cout << "Server IP: " << inet_ntoa(serverAddress.sin_addr) << endl;
 	firstHalf = serverPort >> 8;
 	secondHalf = serverPort & 0xFF;
 
@@ -633,7 +630,7 @@ void UDPServer::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 
 	// Client Port
 	clientPort = clientAddress.sin_port;
-	cout << "ClientPort: " << clientAddress.sin_port << endl;
+//	cout << "ClientPort: " << clientAddress.sin_port << endl;
 	firstHalf = clientPort >> 8;
 	secondHalf = clientPort & 0xFF;
 
@@ -647,12 +644,12 @@ void UDPServer::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 	else
 		packetLen = (unsigned short)octolegFlag;
 
-	cout << "Packet Len: " << packetLen << endl;
+//	cout << "Packet Len: " << packetLen << endl;
 	firstHalf = packetLen >> 8;
 	secondHalf = packetLen & 0xFF;
 
-	cout << "Packet Len First Half: " << (int)firstHalf << endl;
-	cout << "Packet Len Secnd Half: " << (int)secondHalf << endl;
+//	cout << "Packet Len First Half: " << (int)firstHalf << endl;
+//	cout << "Packet Len Secnd Half: " << (int)secondHalf << endl;
 	header[4] = firstHalf;
 	header[5] = secondHalf;
 
@@ -677,7 +674,7 @@ void UDPServer::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 		(unsigned int)(clientAddress.sin_port)
 	);
 
-	cout << "Checksum in Server attachHeader(): " << checksum << endl;
+//	cout << "Checksum in Server attachHeader(): " << checksum << endl;
 
 	firstHalf = checksum >> 8;
 	secondHalf = checksum & 0xFF;
@@ -685,25 +682,25 @@ void UDPServer::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 	header[6] = firstHalf;
 	header[7] = secondHalf;
 
-	cout << "Checksum First Half: " << (int)header[6] << endl;
-	cout << "Checksum Secnd Half: " << (int)header[7] << endl;
+//	cout << "Checksum First Half: " << (int)header[6] << endl;
+//	cout << "Checksum Secnd Half: " << (int)header[7] << endl;
 
 
 	memcpy(data + 6, header + 6, 2);
 
 
-	cout << "Checksum First Half: " << (int)data[6] << endl;
-	cout << "Checksum Secnd Half: " << (int)data[7] << endl;
+//	cout << "Checksum First Half: " << (int)data[6] << endl;
+//	cout << "Checksum Secnd Half: " << (int)data[7] << endl;
 
 
 
 	header[8] = '\0';
 
 
-	for (int i = 0; i < 9; i++)
-	{
-		cout << "Index: " << i << " = " << (unsigned int)header[i] << endl;
-	}
+	//for (int i = 0; i < 9; i++)
+	//{
+	//	cout << "Index: " << i << " = " << (unsigned int)header[i] << endl;
+	//}
 
 
 //	delete[] header;

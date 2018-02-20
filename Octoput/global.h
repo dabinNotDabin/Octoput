@@ -35,9 +35,9 @@ typedef void* (*THREADFUNCPTR)(void*);
 
 struct OctoMonocto
 {
-	short totalFileSize;
-	short numFullOctoblocks;
-	short partialOctoblockSize;
-	short partialOctolegSize;
-	short leftoverDataSize;
+	unsigned int totalFileSize;
+	unsigned int numFullOctoblocks;
+	unsigned int partialOctoblockSize;
+	unsigned int partialOctolegSize;
+	unsigned int leftoverDataSize;
 };

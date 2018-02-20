@@ -145,7 +145,7 @@ void* UDPClient::clientThread(void* id)
 	unsigned short octolegSize;
 	unsigned short numFullOctolegs;
 	unsigned char* octoleg;
-	unsigned short startPos;
+	unsigned int startPos;
 	unsigned short numTotalOctoblocks;
 	bool finished = false;
 
@@ -168,7 +168,8 @@ void* UDPClient::clientThread(void* id)
 		{
 			cout << "Receiving full octoblocks.\n";
 			octoleg = new unsigned char[client->fullOctolegSize];
-			startPos = (client->numOctoblocksReceived * 8888) + (client->numOctolegsReceived * client->fullOctolegSize);
+			startPos = (unsigned int)(	(unsigned int)client->numOctoblocksReceived * (unsigned int)8888) +
+										(unsigned int)((client->numOctolegsReceived % 8) * client->fullOctolegSize);
 			octolegSize = client->fullOctolegSize;
 		}
 		else if (client->numOctoblocksReceived == client->octoMonocto.numFullOctoblocks)
@@ -176,8 +177,8 @@ void* UDPClient::clientThread(void* id)
 			cout << "Receiving partial octoblock.\n";
 			octoleg = new unsigned char[client->octoMonocto.partialOctolegSize];
 			startPos =
-				(client->octoMonocto.numFullOctoblocks * 8888) +
-				((client->numOctolegsReceived - numFullOctolegs) * client->octoMonocto.partialOctolegSize);
+				(unsigned int)((unsigned int)client->octoMonocto.numFullOctoblocks * (unsigned int)8888) +
+				(unsigned int)((client->numOctolegsReceived - numFullOctolegs) * client->octoMonocto.partialOctolegSize);
 			octolegSize = client->octoMonocto.partialOctolegSize;
 		}
 		else
@@ -185,9 +186,9 @@ void* UDPClient::clientThread(void* id)
 			cout << "Receiving leftover data after " << client->numOctolegsReceived << " octolegs rcvd.\n";
 			octoleg = new unsigned char[1];
 			startPos =
-				(client->octoMonocto.numFullOctoblocks * 8888) +
-				(client->octoMonocto.partialOctoblockSize) +
-				((client->numOctolegsReceived - numFullOctolegs - N_OCTOLEGS_PER_OCTOBLOCK) * 1);
+				(unsigned int)((unsigned int)client->octoMonocto.numFullOctoblocks * (unsigned int)8888) +
+				(unsigned int)((unsigned int)client->octoMonocto.partialOctoblockSize) +
+				(unsigned int)((client->numOctolegsReceived - numFullOctolegs - N_OCTOLEGS_PER_OCTOBLOCK) * 1);
 			octolegSize = 1;
 		}
 
@@ -207,19 +208,17 @@ void* UDPClient::clientThread(void* id)
 			pthread_cond_broadcast(&client->octoblocked);
 		}
 
-		pthread_mutex_unlock(&client->generalMutex);
-
 		
-		memcpy(&(client->incomingOctodata[startPos]), octoleg, octolegSize);
+		memcpy(&(client->incomingOctodata[(unsigned int)startPos]), octoleg, octolegSize);
 
-		cout << "Mssg copied into incomingOctodata at pos: " << startPos << endl;
+		cout << "Mssg copied into incomingOctodata at pos: " << (unsigned int)startPos << endl;
 		for (int i = 0; i < octolegSize; i++)
 			cout << octoleg[i];
 		cout << " Of length: " << octolegSize << endl;
 
 		cout << "Num octoblocks received: " << client->numOctoblocksReceived << endl;
 		cout << "Finished?: " << finished << endl;
-
+		pthread_mutex_unlock(&client->generalMutex);
 
 		currentOctoblock++;
 
@@ -305,8 +304,8 @@ void UDPClient::commenceOctovation()
 
 
 	// Receive actual file contents.
-//	incomingOctodata = new unsigned char[(unsigned int)(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
-	incomingOctodata = new unsigned char[(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
+	incomingOctodata = new unsigned char[(unsigned int)(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
+//	incomingOctodata = new unsigned char[(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
 
 	for (unsigned int i = octoMonocto.totalFileSize; i % 8 != 0; i++)
 		incomingOctodata[i] = '\0';
@@ -350,7 +349,7 @@ void UDPClient::commenceOctovation()
 	delete[] threads;
 
 	cout << "Incoming octodata after threads exit.\n";
-	for (int x = 0; x < octoMonocto.totalFileSize; x++)
+	for (unsigned int x = 0; x < octoMonocto.totalFileSize; x++)
 		cout << incomingOctodata[x];
 	cout << endl;
 	
@@ -480,7 +479,7 @@ void UDPClient::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 
 	// Client Port
 	clientPort = clientAddress.sin_port;
-	cout << "ClientPort: " << clientAddress.sin_port << endl;
+//	cout << "ClientPort: " << clientAddress.sin_port << endl;
 	firstHalf = clientPort >> 8;
 	secondHalf = clientPort & 0xFF;
 
@@ -490,8 +489,8 @@ void UDPClient::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 
 	// Server Port
 	serverPort = serverAddress.sin_port;
-	cout << "ServerPort: " << serverPort << endl;
-	cout << "Server IP: " << inet_ntoa(serverAddress.sin_addr) << endl;
+//	cout << "ServerPort: " << serverPort << endl;
+//	cout << "Server IP: " << inet_ntoa(serverAddress.sin_addr) << endl;
 	firstHalf = serverPort >> 8;
 	secondHalf = serverPort & 0xFF;
 
@@ -505,12 +504,12 @@ void UDPClient::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 	else
 		packetLen = (unsigned short)octolegFlag;
 
-	cout << "Packet Len: " << packetLen << endl;
+//	cout << "Packet Len: " << packetLen << endl;
 	firstHalf = packetLen >> 8;
 	secondHalf = packetLen & 0xFF;
 
-	cout << "Packet Len First Half: " << (int)firstHalf << endl;
-	cout << "Packet Len Secnd Half: " << (int)secondHalf << endl;
+//	cout << "Packet Len First Half: " << (int)firstHalf << endl;
+//	cout << "Packet Len Secnd Half: " << (int)secondHalf << endl;
 	header[4] = firstHalf;
 	header[5] = secondHalf;
 
@@ -540,7 +539,7 @@ void UDPClient::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 		(unsigned int)(serverAddress.sin_port)
 	);
 
-	cout << "Checksum in Client attachHeader(): " << checksum << endl;
+//	cout << "Checksum in Client attachHeader(): " << checksum << endl;
 
 	firstHalf = checksum >> 8;
 	secondHalf = checksum & 0xFF;
@@ -548,24 +547,24 @@ void UDPClient::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 	header[6] = firstHalf;
 	header[7] = secondHalf;
 
-	cout << "Checksum First Half: " << (int)header[6] << endl;
-	cout << "Checksum Secnd Half: " << (int)header[7] << endl;
+//	cout << "Checksum First Half: " << (int)header[6] << endl;
+//	cout << "Checksum Secnd Half: " << (int)header[7] << endl;
 
 
 	memcpy(data + 6, header + 6, 2);
 	
 
-	cout << "Checksum First Half: " << (int)data[6] << endl;
-	cout << "Checksum Secnd Half: " << (int)data[7] << endl;
+//	cout << "Checksum First Half: " << (int)data[6] << endl;
+//	cout << "Checksum Secnd Half: " << (int)data[7] << endl;
 
 
 	header[8] = '\0';
 
 
-	for (int i = 0; i < 9; i++)
-	{
-		cout << "Index: " << i << " = " << (unsigned int)header[i] << endl;
-	}
+//	for (int i = 0; i < 9; i++)
+//	{
+//		cout << "Index: " << i << " = " << (unsigned int)header[i] << endl;
+//	}
 
 
 //	delete[] header;
@@ -710,7 +709,7 @@ bool UDPClient::parseOctoDescripto(const unsigned char* octoDescripto)
 		posB = octoDescriptoStr.find("\r\n");
 
 		if (posB != std::string::npos)
-			octoMonocto.totalFileSize = (short)atoi((octoDescriptoStr.substr(0, posB)).c_str());
+			octoMonocto.totalFileSize = (unsigned int)atoi((octoDescriptoStr.substr(0, posB)).c_str());
 		else
 		{
 			cout << "octoDescripto missing \"\r\n\" after total file size tag.\n";
@@ -735,7 +734,7 @@ bool UDPClient::parseOctoDescripto(const unsigned char* octoDescripto)
 		posB = octoDescriptoStr.find("\r\n");
 
 		if (posB != std::string::npos)
-			octoMonocto.numFullOctoblocks = (short)atoi((octoDescriptoStr.substr(0, posB)).c_str());
+			octoMonocto.numFullOctoblocks = (unsigned int)atoi((octoDescriptoStr.substr(0, posB)).c_str());
 		else
 		{
 			cout << "octoDescripto missing \"\r\n\" after num full octoblocks tag.\n";
@@ -760,7 +759,7 @@ bool UDPClient::parseOctoDescripto(const unsigned char* octoDescripto)
 		posB = octoDescriptoStr.find("\r\n");
 
 		if (posB != std::string::npos)
-			octoMonocto.partialOctoblockSize = (short)atoi((octoDescriptoStr.substr(0, posB)).c_str());
+			octoMonocto.partialOctoblockSize = (unsigned int)atoi((octoDescriptoStr.substr(0, posB)).c_str());
 		else
 		{
 			cout << "octoDescripto missing \"\r\n\" after size of partial octoblock tag.\n";
@@ -785,7 +784,7 @@ bool UDPClient::parseOctoDescripto(const unsigned char* octoDescripto)
 		posB = octoDescriptoStr.find("\r\n");
 
 		if (posB != std::string::npos)
-			octoMonocto.partialOctolegSize = (short)atoi((octoDescriptoStr.substr(0, posB)).c_str());
+			octoMonocto.partialOctolegSize = (unsigned int)atoi((octoDescriptoStr.substr(0, posB)).c_str());
 		else
 		{
 			cout << "octoDescripto missing \"\r\n\" after partial octoleg size tag.\n";
@@ -810,7 +809,7 @@ bool UDPClient::parseOctoDescripto(const unsigned char* octoDescripto)
 		posB = octoDescriptoStr.find("\r\n");
 
 		if (posB != std::string::npos)
-			octoMonocto.leftoverDataSize = (short)atoi((octoDescriptoStr.substr(0, posB)).c_str());
+			octoMonocto.leftoverDataSize = (unsigned int)atoi((octoDescriptoStr.substr(0, posB)).c_str());
 		else
 		{
 			cout << "octoDescripto missing \"\r\n\" after leftover data size tag.\n";
@@ -844,12 +843,12 @@ unsigned short UDPClient::computeChecksum(const unsigned char* data, const char*
 	unsigned int sum;
 	char* byte;
 
-	cout << "Server IP in Client Compute Checksum: " << string(serverIP) << endl;
+//	cout << "Server IP in Client Compute Checksum: " << string(serverIP) << endl;
 
 	UDPSocket->getAddress(clientAddress);
 
 	pseudoHeaderIPs = inet_ntoa(clientAddress.sin_addr) + string(".") + string(serverIP);
-	cout << "Header IPs: " << pseudoHeaderIPs << endl;
+//	cout << "Header IPs: " << pseudoHeaderIPs << endl;
 
 
 	// Begin Source IP
@@ -861,7 +860,7 @@ unsigned short UDPClient::computeChecksum(const unsigned char* data, const char*
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
 	//	cout << atoi(worker.c_str()) << endl;
 	i = (i << 8) | atoi(worker.c_str());
-	cout << "I: " << i << endl;
+//	cout << "I: " << i << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
 	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 
@@ -874,13 +873,13 @@ unsigned short UDPClient::computeChecksum(const unsigned char* data, const char*
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
 	//	cout << atoi(worker.c_str()) << endl;
 	j = (j << 8) | atoi(worker.c_str());
-	cout << "J: " << j << endl;
+//	cout << "J: " << j << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
 	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 
 
 	sum = i + j;
-	cout << "SUM After Src IP: " << sum << endl;
+//	cout << "SUM After Src IP: " << sum << endl;
 
 
 	// Begin Dest IP
@@ -892,7 +891,7 @@ unsigned short UDPClient::computeChecksum(const unsigned char* data, const char*
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
 	//	cout << atoi(worker.c_str()) << endl;
 	i = (i << 8) | atoi(worker.c_str());
-	cout << "I: " << i << endl;
+//	cout << "I: " << i << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
 	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 
@@ -906,19 +905,19 @@ unsigned short UDPClient::computeChecksum(const unsigned char* data, const char*
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
 	//	cout << atoi(worker.c_str()) << endl;
 	i = (i << 8) | atoi(worker.c_str());
-	cout << "I: " << i << endl;
+//	cout << "I: " << i << endl;
 	//	cout << "Pseudo: " << pseudoHeaderIPs << endl;
 
 	sum = sum + i;
 	// End Dest IP
 
-	cout << "SUM After Dst IP: " << sum << endl;
+//	cout << "SUM After Dst IP: " << sum << endl;
 
 
 	// Begin Protocol
 	i = 17;
 	sum = sum + i;
-	cout << "SUM After Protocol: " << sum << endl;
+//	cout << "SUM After Protocol: " << sum << endl;
 	// End Protocol
 
 
@@ -929,7 +928,7 @@ unsigned short UDPClient::computeChecksum(const unsigned char* data, const char*
 
 	i = ((data[4] << 8) | data[5]);//HEADER_SIZE_BYTES + udpPacketData.length();
 	sum = sum + i;
-	cout << "SUM After Length: " << sum << endl;
+//	cout << "SUM After Length: " << sum << endl;
 	// End UDP Length
 
 
@@ -937,13 +936,13 @@ unsigned short UDPClient::computeChecksum(const unsigned char* data, const char*
 	i = ((data[0] << 8) | data[1]);
 	i = 20;
 	sum = sum + i;
-	cout << "SUM After Src Port: " << sum << endl;
+//	cout << "SUM After Src Port: " << sum << endl;
 	// End Src Port
 
 	// Begin Dst Port
 	i = ((data[2] << 8) | data[3]);
 	sum = sum + i;
-	cout << "SUM After Dst Port: " << sum << endl;
+//	cout << "SUM After Dst Port: " << sum << endl;
 	// End Dst Port
 
 	// Begin UDP Length (UDP header length field)
@@ -953,7 +952,7 @@ unsigned short UDPClient::computeChecksum(const unsigned char* data, const char*
 
 	i = ((data[4] << 8) | data[5]);// HEADER_SIZE_BYTES + udpPacketData.length();
 	sum = sum + i;
-	cout << "SUM After Length: " << sum << endl;
+//	cout << "SUM After Length: " << sum << endl;
 	// End UDP Length
 
 	//	cout << "UDP Packet: " << udpPacketData << endl;
