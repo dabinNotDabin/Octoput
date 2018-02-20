@@ -10,6 +10,7 @@ using namespace std;
 	{
 		workFinished = false;
 		currentOctoblock = 0;
+		currentOctoleg = 0;
 		pthread_mutex_init(&queueMutex, NULL);
 		pthread_cond_init(&queueEmpty, NULL);
 		pthread_cond_init(&octoblocked, NULL);
@@ -29,19 +30,19 @@ using namespace std;
 	// the workFinished variable being set.  
 	uint8_t TaskQueue::getTask(unsigned short requestedOctoblock)
 	{
-		uint8_t n = 8;
+		uint8_t n = 48;
 
 		// Since waiting unlocks the mutex, all threads can enter this waiting state.
 		// Next octoblock will unblock all waiting threads and put them in a waiting state
 		// to acquire the mutex when it becomes free in some order determined by the scheduler.
-		pthread_mutex_lock(&queueMutex);
+		pthread_mutex_lock(&queueMutex); 
 		while (requestedOctoblock > currentOctoblock)
 		{
 			pthread_cond_wait(&octoblocked, &queueMutex);
 		}
 
 		if (workFinished && octolegQueue.empty())
-			n = -1;
+			n = 49;
 		else
 		{
 			while (octolegQueue.empty())
@@ -56,6 +57,8 @@ using namespace std;
 			{
 				n = octolegQueue.front();
 				octolegQueue.pop();
+//				currentOctoleg++;
+//				currentOctoblock += ((currentOctoleg % 8 == 0) ? 1 : 0);
 			}
 		}
 		pthread_mutex_unlock(&queueMutex);

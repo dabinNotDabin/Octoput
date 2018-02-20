@@ -26,6 +26,8 @@ UDPClient::~UDPClient()
 	
 	pthread_mutex_destroy(&socketMutex);
 	pthread_mutex_destroy(&generalMutex);
+	pthread_mutex_destroy(&octoblockMutex);
+	pthread_cond_destroy(&octoblocked);
 }
 
 
@@ -45,9 +47,9 @@ struct sockaddr_in UDPClient::getAddress()
 {
 	struct sockaddr_in addr;
 
-	pthread_mutex_lock(&socketMutex);
+//	pthread_mutex_lock(&socketMutex);
 	UDPSocket->getAddress(addr);
-	pthread_mutex_unlock(&socketMutex);
+//	pthread_mutex_unlock(&socketMutex);
 
 	return addr;
 }
@@ -88,6 +90,10 @@ UDPClient::UDPClient(short family, short type, short protocol, unsigned int port
 
 	pthread_mutex_init(&socketMutex, NULL);
 	pthread_mutex_init(&generalMutex, NULL);
+	pthread_mutex_init(&octoblockMutex, NULL);
+	pthread_cond_init(&octoblocked, NULL);
+
+	memset(octolegRcvd, 0, 8);
 }
 
 
@@ -135,73 +141,94 @@ bool UDPClient::bindSocket()
 
 void* UDPClient::clientThread(void* id)
 {
+	unsigned short currentOctoblock = 0;
 	unsigned short octolegSize;
+	unsigned short numFullOctolegs;
 	unsigned char* octoleg;
 	unsigned short startPos;
-	uint8_t octolegID;
+	unsigned short numTotalOctoblocks;
+	bool finished = false;
 
 	UDPClient* client = ((UDPClient*)id);
-//	octolegID = client->taskQ->getTask(client->numOctoblocksReceived);
+	numFullOctolegs = client->octoMonocto.numFullOctoblocks * 8;
+	numTotalOctoblocks =
+		client->octoMonocto.numFullOctoblocks +
+		((client->octoMonocto.partialOctoblockSize == 0) ? 0 : 1) +
+		((client->octoMonocto.leftoverDataSize == 0) ? 0 : 1);
+
 
 	// Client shouldn't need a task q.
 	// Threads receive messages and identify where to store them via the octoleg flag.
 	// Need a condition variable to wait on until entire octoblock is processed before threads move to next one.
 
-	while (octolegID < 8)
+	while (1)
 	{
+		pthread_mutex_lock(&client->generalMutex);
 		if (client->numOctoblocksReceived < client->octoMonocto.numFullOctoblocks)
 		{
-			cout << "Working on full octoblocks.\n";
-			octoleg = new unsigned char[client->fullOctolegSize + HEADER_SIZE_BYTES];
-
-			startPos = (client->numOctoblocksReceived * 8888) + (octolegID * client->fullOctolegSize);
+			cout << "Receiving full octoblocks.\n";
+			octoleg = new unsigned char[client->fullOctolegSize];
+			startPos = (client->numOctoblocksReceived * 8888) + (client->numOctolegsReceived * client->fullOctolegSize);
 			octolegSize = client->fullOctolegSize;
-			memcpy(octoleg, &(client->incomingOctodata[startPos]), octolegSize);
 		}
-		else if (client->numOctoblocksReceived  == client->octoMonocto.numFullOctoblocks)
+		else if (client->numOctoblocksReceived == client->octoMonocto.numFullOctoblocks)
 		{
-			cout << "Working on partial octoblock.\n";
-			octoleg = new unsigned char[client->octoMonocto.partialOctolegSize + HEADER_SIZE_BYTES];
-
+			cout << "Receiving partial octoblock.\n";
+			octoleg = new unsigned char[client->octoMonocto.partialOctolegSize];
 			startPos =
 				(client->octoMonocto.numFullOctoblocks * 8888) +
-				(octolegID * client->octoMonocto.partialOctolegSize);
+				((client->numOctolegsReceived - numFullOctolegs) * client->octoMonocto.partialOctolegSize);
 			octolegSize = client->octoMonocto.partialOctolegSize;
-			memcpy(octoleg, &(client->incomingOctodata[startPos]), octolegSize);
 		}
 		else
 		{
-			cout << "Working on leftover data.\n";
-			octoleg = new unsigned char[1 + HEADER_SIZE_BYTES];
-
+			cout << "Receiving leftover data after " << client->numOctolegsReceived << " octolegs rcvd.\n";
+			octoleg = new unsigned char[1];
 			startPos =
 				(client->octoMonocto.numFullOctoblocks * 8888) +
 				(client->octoMonocto.partialOctoblockSize) +
-				(octolegID * 1);
+				((client->numOctolegsReceived - numFullOctolegs - N_OCTOLEGS_PER_OCTOBLOCK) * 1);
 			octolegSize = 1;
-			memcpy(octoleg, &(client->incomingOctodata[startPos]), octolegSize);
 		}
 
-//		client->attachHeader(octolegID, octolegSize, octoleg);
-//		client->sendMssgRequireAck(octoleg, octolegSize, 100000);
-//		cout << "Ack Received.\n";
+		if (client->numOctoblocksReceived >= numTotalOctoblocks)
+		{
+			pthread_mutex_unlock(&client->generalMutex);
+			break;
+		}
 
-
-
-		pthread_mutex_lock(&client->generalMutex);
+		client->receiveMssg(octoleg, octolegSize);
 
 		client->numOctolegsReceived++;
 		if (client->numOctolegsReceived % 8 == 0)
 		{
 			client->numOctoblocksReceived++;
-//			client->taskQ->nextOctoblock();
+			memset(client->octolegRcvd, 0, 8);
+			pthread_cond_broadcast(&client->octoblocked);
 		}
+
 		pthread_mutex_unlock(&client->generalMutex);
 
+		
+		memcpy(&(client->incomingOctodata[startPos]), octoleg, octolegSize);
 
-//		octolegID = client->taskQ->getTask(client->numOctoblocksReceived);
+		cout << "Mssg copied into incomingOctodata at pos: " << startPos << endl;
+		for (int i = 0; i < octolegSize; i++)
+			cout << octoleg[i];
+		cout << " Of length: " << octolegSize << endl;
+
+		cout << "Num octoblocks received: " << client->numOctoblocksReceived << endl;
+		cout << "Finished?: " << finished << endl;
+
+
+		currentOctoblock++;
+
+
+		pthread_mutex_lock(&client->generalMutex);
+		while (currentOctoblock > client->numOctoblocksReceived)
+			pthread_cond_wait(&client->octoblocked, &client->generalMutex);
+		pthread_mutex_unlock(&client->generalMutex);
 	}
-
 
 
 	pthread_exit(0);
@@ -278,42 +305,58 @@ void UDPClient::commenceOctovation()
 
 
 	// Receive actual file contents.
-	incomingOctodata = new unsigned char[octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8))];
+//	incomingOctodata = new unsigned char[(unsigned int)(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
+	incomingOctodata = new unsigned char[(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
 
-	for (int i = octoMonocto.totalFileSize; i % 8 != 0; i++)
+	for (unsigned int i = octoMonocto.totalFileSize; i % 8 != 0; i++)
 		incomingOctodata[i] = '\0';
 
-	// Initialize task queue and control variables.
+	// Initialize control variables.
 	unsigned short numTotalOctoblocks =
 		octoMonocto.numFullOctoblocks +
-		(octoMonocto.partialOctoblockSize != 0) ? 1 : 0 +
-		(octoMonocto.leftoverDataSize != 0) ? 1 : 0;
+		((octoMonocto.partialOctoblockSize == 0) ? 0 : 1) +
+		((octoMonocto.leftoverDataSize == 0) ? 0 : 1);
+
+	cout << "Num Full Octoblocks: " << octoMonocto.numFullOctoblocks << endl;
+	cout << "Num Partial Octoblk: " << ((octoMonocto.partialOctoblockSize != 0) ? "1" : "0") << endl;
+	cout << "Num Leftovr Octoblk: " << ((octoMonocto.leftoverDataSize != 0) ? "1" : "0") << endl;
 
 	cout << "Num Total Octoblocks: " << numTotalOctoblocks << endl;
 
-//	// Start threads.
-//	pthread_t* threads;
-//	threads = new pthread_t[N_THREADS];
-//	long status;
-//	long i;
-//	for (i = 0; i < N_THREADS; i++)
-//	{
-////		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPClient::clientThread, (void*)i);
-//		status = pthread_create(&threads[i], NULL, &(this->clientThread), (void*)this);
-//		if (status != 0)
-//		{
-//			std::cout << "Creation of thread resulted in error.\n";
-//			exit(-1);
-//		}
-//	}
-//
-//
-//	for (i = 0; i < 8; i++)
-//		pthread_join(threads[i], NULL);
-//
-//
-//	delete[] threads;
+	numOctoblocksReceived = 0;
+	numOctolegsReceived = 0;
 
+	// Start threads.
+	pthread_t* threads;
+	threads = new pthread_t[N_THREADS];
+	long status;
+	long i;
+	for (i = 0; i < N_THREADS; i++)
+	{
+//		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPClient::clientThread, (void*)i);
+		status = pthread_create(&threads[i], NULL, &(this->clientThread), (void*)this);
+		if (status != 0)
+		{
+			std::cout << "Creation of thread resulted in error.\n";
+			exit(-1);
+		}
+	}
+
+
+	for (i = 0; i < 8; i++)
+		pthread_join(threads[i], NULL);
+
+
+	delete[] threads;
+
+	cout << "Incoming octodata after threads exit.\n";
+	for (int x = 0; x < octoMonocto.totalFileSize; x++)
+		cout << incomingOctodata[x];
+	cout << endl;
+	
+	out.open(filenameOut, ios::out | ios::binary);
+	out.write((char*)incomingOctodata, octoMonocto.totalFileSize);
+	out.close();
 
 	return;
 }
@@ -335,18 +378,13 @@ void UDPClient::receiveMssg(unsigned char *buffer, unsigned short mssgLen)
 	(
 		UDPSocket->getFD(),
 		rcvMssg,
-		mssgLen,
+		mssgLen + HEADER_SIZE_BYTES,
 		0,
 		serverAddressPtr,
 		&serverAddressLen
 	);
 	pthread_mutex_unlock(&socketMutex);
 
-
-	// Here we need to be able to receive and discard duplicate messages.
-	// When a message is received, set a flag for the octoleg it corresponds to and exit thread after copying data.
-	// When a message is received, check the flags -- if set, resend ack for that message but do not process mssg.
-	// 
 
 	while (!rcvdOK)
 	{
@@ -356,6 +394,8 @@ void UDPClient::receiveMssg(unsigned char *buffer, unsigned short mssgLen)
 		if (nBytesRcvd != -1)
 		{
 			rcvMssg[nBytesRcvd] = '\0';
+
+			cout << "\t\tBYTES RCVD: " << nBytesRcvd << endl;
 
 			rcvdChecksum = ((rcvMssg[6] << 8) | rcvMssg[7]);
 			cout << "Received Octoleg Checksum: " << rcvdChecksum << endl;
@@ -368,19 +408,23 @@ void UDPClient::receiveMssg(unsigned char *buffer, unsigned short mssgLen)
 
 		if (checksum == rcvdChecksum)
 		{
-			rcvdOK = true;
+			if (abs(octolegFlag) < 8 && !octolegRcvd[octolegFlag])
+			{
+				rcvdOK = true;
+				octolegRcvd[octolegFlag] = true;
+			}			
+
 			sendAck(octolegFlag);
 		}
 		else
 		{
-			// Receive message.
 			memset(rcvMssg, 0, 1200);
 			pthread_mutex_lock(&socketMutex);
 			nBytesRcvd = recvfrom
 			(
 				UDPSocket->getFD(),
 				rcvMssg,
-				mssgLen,
+				mssgLen + HEADER_SIZE_BYTES,
 				0,
 				serverAddressPtr,
 				&serverAddressLen
@@ -388,8 +432,12 @@ void UDPClient::receiveMssg(unsigned char *buffer, unsigned short mssgLen)
 			pthread_mutex_unlock(&socketMutex);
 		}
 	}
-
+	
+	memcpy(buffer, &rcvMssg[HEADER_SIZE_BYTES], mssgLen);
 }
+
+
+
 
 bool UDPClient::sendAck(char id)
 {
@@ -426,6 +474,7 @@ void UDPClient::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 	unsigned char firstHalf;
 	unsigned char secondHalf;
 	unsigned char* header = new unsigned char[9];
+	unsigned char dataTemp[1200];
 
 	UDPSocket->getAddress(clientAddress);
 
@@ -469,11 +518,18 @@ void UDPClient::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 	//	cout << "Client IP: " << inet_ntoa(clientAddress.sin_addr) << endl;
 
 
-	string dataStr((char*)data);
+//	string dataStr((char*)data);
+
+	memcpy(dataTemp, data, payloadSize);
 
 	header[6] = header[7] = 0;
 	memcpy(data, header, HEADER_SIZE_BYTES);
-	memcpy(data + HEADER_SIZE_BYTES, dataStr.c_str(), dataStr.length());
+	memcpy(data + HEADER_SIZE_BYTES, dataTemp, payloadSize);
+
+
+	//header[6] = header[7] = 0;
+	//memcpy(data, header, HEADER_SIZE_BYTES);
+	//memcpy(data + HEADER_SIZE_BYTES, dataStr.c_str(), dataStr.length());
 
 
 	// Checksum
@@ -609,7 +665,10 @@ string UDPClient::askUserForFilename()
 	if (confirmationStr.compare("OK") != 0)
 		return '\0';
 	else
+	{
+		filenameOut = filename + ".txt";
 		return confirmationStr;
+	}
 }
 
 

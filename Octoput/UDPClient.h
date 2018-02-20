@@ -32,7 +32,7 @@ private:
 	OctoMonocto octoMonocto;
 
 	unsigned char* incomingOctodata;
-
+	bool octolegRcvd[N_OCTOLEGS_PER_OCTOBLOCK];
 
 	static void* clientThread(void* id);
 	int octoblockSize = 8888;
@@ -42,10 +42,13 @@ private:
 //	TaskQueue* taskQ;
 	pthread_mutex_t socketMutex;
 	pthread_mutex_t generalMutex;
+	pthread_mutex_t octoblockMutex;
+	pthread_cond_t octoblocked;
 	unsigned short numOctoblocksReceived;
 	unsigned short numOctolegsReceived;
 
-
+	std::ofstream out;
+	string filenameOut;
 
 	string askUserForFilename();
 	bool parseOctoDescripto(const unsigned char* octoDescripto);

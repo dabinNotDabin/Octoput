@@ -46,7 +46,7 @@ private:
 
 
 	unsigned char* octoblockData;
-	bool ackRcvd[8];
+	bool ackRcvd[N_OCTOLEGS_PER_OCTOBLOCK];
 
 	TaskQueue* taskQ;
 	pthread_mutex_t socketMutex;

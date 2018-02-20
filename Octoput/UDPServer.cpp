@@ -48,9 +48,9 @@ struct sockaddr_in UDPServer::getAddress()
 {
 	struct sockaddr_in addr;
 
-	pthread_mutex_lock(&socketMutex);
+//	pthread_mutex_lock(&socketMutex);
 	UDPSocket->getAddress(addr);
-	pthread_mutex_unlock(&socketMutex);
+//	pthread_mutex_unlock(&socketMutex);
 
 	return addr;
 }
@@ -177,6 +177,7 @@ void* UDPServer::serverThread(void* id)
 	unsigned short octolegSize;
 	unsigned char* octoleg;
 	unsigned short startPos;
+	unsigned short currentOctoblock = 0;
 	uint8_t octolegID;
 
 	UDPServer* server = ((UDPServer*)id);
@@ -184,10 +185,13 @@ void* UDPServer::serverThread(void* id)
 	octolegID = server->taskQ->getTask(server->numOctoblocksTransferred);
 	while (octolegID < 8)
 	{
+		pthread_mutex_lock(&server->generalMutex);
+		cout << "Thread id: " << (int)octolegID << endl;
+
 		if (server->numOctoblocksTransferred < server->octoMonocto.numFullOctoblocks)
 		{
-			cout << "Working on full octoblocks.\n";
-			octoleg = new unsigned char[server->fullOctolegSize + HEADER_SIZE_BYTES];
+			cout << "Sending full octoblocks.\n";
+			octoleg = new unsigned char[server->fullOctolegSize + HEADER_SIZE_BYTES + 1];
 
 			startPos = (server->numOctoblocksTransferred * 8888) + (octolegID * server->fullOctolegSize);
 			octolegSize = server->fullOctolegSize;
@@ -195,8 +199,9 @@ void* UDPServer::serverThread(void* id)
 		}
 		else if (server->numOctoblocksTransferred == server->octoMonocto.numFullOctoblocks)
 		{
-			cout << "Working on partial octoblock.\n";
-			octoleg = new unsigned char[server->octoMonocto.partialOctolegSize + HEADER_SIZE_BYTES];
+			cout << "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy";
+			cout << "Sending partial octoblock.\n";
+			octoleg = new unsigned char[server->octoMonocto.partialOctolegSize + HEADER_SIZE_BYTES + 1];
 
 			startPos =
 				(server->octoMonocto.numFullOctoblocks * 8888) +
@@ -206,8 +211,9 @@ void* UDPServer::serverThread(void* id)
 		}
 		else
 		{
-			cout << "Working on leftover data.\n";
-			octoleg = new unsigned char[1 + HEADER_SIZE_BYTES];
+			cout << "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+			cout << "Sending leftover data: ";
+			octoleg = new unsigned char[1 + HEADER_SIZE_BYTES + 1];
 
 			startPos =
 				(server->octoMonocto.numFullOctoblocks * 8888) +
@@ -215,13 +221,21 @@ void* UDPServer::serverThread(void* id)
 				(octolegID * 1);
 			octolegSize = 1;
 			memcpy(octoleg, &(server->octoblockData[startPos]), octolegSize);
+
+			cout << octoleg[0] << " at pos: " << startPos << endl;
 		}
 
+		octoleg[octolegSize + HEADER_SIZE_BYTES] = '\0';
 		server->attachHeader(octolegID, octolegSize, octoleg);
-		server->sendMssgRequireAck(octoleg, octolegSize, 100000, octolegID);
-		cout << "Ack Received.\n";
-		
+		pthread_mutex_unlock(&server->generalMutex);
 
+		cout << "Thread: " << (int)octolegID << " sending mssg.\n";
+		pthread_mutex_lock(&server->socketMutex);
+		server->sendMssgRequireAck(octoleg, octolegSize + HEADER_SIZE_BYTES, 100000, octolegID);
+		pthread_mutex_unlock(&server->socketMutex);
+		cout << "Ack Received.\n";
+
+		currentOctoblock++;
 
 		pthread_mutex_lock(&server->generalMutex);
 
@@ -234,10 +248,15 @@ void* UDPServer::serverThread(void* id)
 		}
 		pthread_mutex_unlock(&server->generalMutex);
 
+		cout << "Num octoblocks transferred: " << server->numOctoblocksTransferred << endl;
+		cout << "Num octolegs transferred: " << server->numOctolegsTransferred << endl;
+		octolegID = server->taskQ->getTask(currentOctoblock);
 
-		octolegID = server->taskQ->getTask(server->numOctoblocksTransferred);
+//		cout << "octolegID in loop: " << (int)octolegID << endl;
 	}
 
+
+//	cout << "octolegID on finish: " << octolegID << endl;
 
 
 	pthread_exit(0);
@@ -282,13 +301,15 @@ void UDPServer::commenceOctovation()
 
 	in.open(filename, ios::in | ios::binary);
 	fileContents = string((istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-
 	instantiateOctoMonocto();
-
-	octoblockData = new unsigned char [octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8))];
+	cout << "Making array of size: " << octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)) << endl;
+//	octoblockData = new unsigned char [(unsigned int)(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
+	octoblockData = new unsigned char[(octoMonocto.totalFileSize + (8 - (octoMonocto.totalFileSize % 8)))];
+	cout << "HERE: A\n";
 	octoblockData = (unsigned char*)fileContents.data();
+	cout << "HERE: A\n";
 
-	for (int i = octoMonocto.totalFileSize; i % 8 != 0; i++)
+	for (unsigned int i = octoMonocto.totalFileSize; i % 8 != 0; i++)
 		octoblockData[i] = '\0';
 
 	cout << "FILE: \n" << fileContents << endl;
@@ -320,8 +341,8 @@ void UDPServer::commenceOctovation()
 
 	unsigned short numTotalOctoblocks =
 		octoMonocto.numFullOctoblocks +
-		(octoMonocto.partialOctoblockSize != 0) ? 1 : 0 +
-		(octoMonocto.leftoverDataSize != 0) ? 1 : 0;
+		((octoMonocto.partialOctoblockSize == 0) ? 0 : 1) +
+		((octoMonocto.leftoverDataSize == 0) ? 0 : 1);
 
 	cout << "Num Total Octoblocks: " << numTotalOctoblocks << endl;
 
@@ -332,27 +353,27 @@ void UDPServer::commenceOctovation()
 	taskQ->setWorkFinished(true);
 
 	// Start threads.
-//	pthread_t* threads;
-//	threads = new pthread_t[N_THREADS];
-//	long status;
-//	long i;
-//	for (i = 0; i < N_THREADS; i++)
-//	{
-//		status = pthread_create(&threads[i], NULL, &(this->serverThread), (void*)this);
-////		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPServer::serverThread, (void*)this);
-//		if (status != 0)
-//		{
-//			std::cout << "Creation of thread resulted in error.\n";
-//			exit(-1);
-//		}
-//	}
-//
-//
-//	for (i = 0; i < N_THREADS; i++)
-//		pthread_join(threads[i], NULL);
-//
-//
-//	delete[] threads;
+	pthread_t* threads;
+	threads = new pthread_t[N_THREADS];
+	long status;
+	long i;
+	for (i = 0; i < N_THREADS; i++)
+	{
+		status = pthread_create(&threads[i], NULL, &(this->serverThread), (void*)this);
+//		status = pthread_create(&threads[i], NULL, (THREADFUNCPTR)&UDPServer::serverThread, (void*)this);
+		if (status != 0)
+		{
+			std::cout << "Creation of thread resulted in error.\n";
+			exit(-1);
+		}
+	}
+
+
+	for (i = 0; i < N_THREADS; i++)
+		pthread_join(threads[i], NULL);
+
+
+	delete[] threads;
 
 	return;
 }
@@ -377,8 +398,6 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 	double elapsed;
 	before = clock();
 
-
-	pthread_mutex_lock(&socketMutex);
 	sendto
 	(
 		UDPSocket->getFD(),
@@ -388,22 +407,7 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 		clientAddressPtr,
 		clientAddressLen
 	);
-	pthread_mutex_unlock(&socketMutex);
 
-//	usleep(timeoutMsec);
-
-	memset(ack, 0, ACK_SIZE_BYTES);
-	pthread_mutex_lock(&socketMutex);
-	nBytesRcvd = recvfrom
-	(
-		UDPSocket->getFD(),
-		ack,
-		ACK_SIZE_BYTES,
-		0,
-		clientAddressPtr,
-		&clientAddressLen
-	);
-	pthread_mutex_unlock(&socketMutex);
 
 	while (!ackOK)
 	{
@@ -415,22 +419,16 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 			rcvdChecksum = ((ack[6] << 8) | ack[7]);
 			cout << "Received ACK Checksum: " << rcvdChecksum << endl;
 
-//			ack[nBytesRcvd] = '\0';
-//			cout << "ACK Received: ";
-//			for (int i = 0; i < nBytesRcvd; i++)
-//				cout << ack[i];
-//			cout << " of length: " << nBytesRcvd << endl;
-
 			checksum = computeChecksum((unsigned char*)ack, inet_ntoa(clientAddress.sin_addr), clientAddress.sin_port);
 			cout << "ACK Checksum Computed: " << checksum << endl;
 		}
 
 		if (checksum == rcvdChecksum)
 		{
-			cout << "Ack OK.\n";
-			if (octolegID >= 0)
+			octolegFlag = ack[5];
+
+			if (abs(octolegFlag) < 8 && octolegID >= 0)
 			{
-				octolegFlag = ack[5];
 				pthread_mutex_lock(&generalMutex);
 				ackRcvd[octolegFlag] = true;
 				pthread_mutex_unlock(&generalMutex);
@@ -442,7 +440,6 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 		{
 			if (elapsed > timeoutMsec)
 			{
-				pthread_mutex_lock(&socketMutex);
 				sendto
 				(
 					UDPSocket->getFD(),
@@ -452,13 +449,11 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 					clientAddressPtr,
 					clientAddressLen
 				);
-				pthread_mutex_unlock(&socketMutex);
 
 				before = clock();
 			}
 
 			memset(ack, 0, ACK_SIZE_BYTES);
-			pthread_mutex_lock(&socketMutex);
 			nBytesRcvd = recvfrom
 			(
 				UDPSocket->getFD(),
@@ -468,7 +463,6 @@ void UDPServer::sendMssgRequireAck(const unsigned char* mssg, int mssgLen, int t
 				clientAddressPtr,
 				&clientAddressLen
 			);
-			pthread_mutex_unlock(&socketMutex);
 		}
 
 		if (octolegID >= 0)
@@ -574,18 +568,18 @@ void UDPServer::instantiateOctoMonocto()
 	numFullOctoblocksNeeded = fileContents.length() / octoblockSize;
 
 	// If partialOctoblockSize is not 0, have to send partial octoblock.
-	partialOctoblockSize = fileContents.length() % 8888;
+	partialOctoblockSize = ((fileContents.length() % 8888) / 8) * 8;
 
 	if (partialOctoblockSize != 0)
 	{
-		leftoverDataSize = partialOctoblockSize % 8;
-		partialOctolegSize = (partialOctoblockSize - leftoverDataSize) / 8;
+		leftoverDataSize = (fileContents.length() % 8888) - partialOctoblockSize;
+		partialOctolegSize = partialOctoblockSize / 8;
 	}
 	else
 	{
-		partialOctoblockSize = -1;
-		partialOctolegSize = -1;
-		leftoverDataSize = -1;
+		partialOctoblockSize = 0;
+		partialOctolegSize = 0;
+		leftoverDataSize = 0;
 	}
 
 
@@ -610,6 +604,8 @@ void UDPServer::instantiateOctoMonocto()
 // data must be null terminated
 void UDPServer::attachHeader(char octolegFlag, unsigned short payloadSize, unsigned char* data)
 {
+	cout << "\tAttach header:\n";
+
 	struct sockaddr_in serverAddress;
 	unsigned short serverPort;
 	unsigned short clientPort;
@@ -618,7 +614,7 @@ void UDPServer::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 	unsigned char firstHalf;
 	unsigned char secondHalf;
 	unsigned char* header = new unsigned char[9];
-
+	unsigned char dataTemp[1200];
 
 
 	UDPSocket->getAddress(serverAddress);
@@ -664,11 +660,13 @@ void UDPServer::attachHeader(char octolegFlag, unsigned short payloadSize, unsig
 	//	cout << "Client IP: " << inet_ntoa(clientAddress.sin_addr) << endl;
 
 
-	string dataStr((char*)data);
+//	string dataStr((char*)data);
+
+	memcpy(dataTemp, data, payloadSize);
 
 	header[6] = header[7] = 0;
 	memcpy(data, header, HEADER_SIZE_BYTES);
-	memcpy(data + HEADER_SIZE_BYTES, dataStr.c_str(), dataStr.length());
+	memcpy(data + HEADER_SIZE_BYTES, dataTemp, payloadSize);
 
 
 	// Checksum
@@ -729,12 +727,12 @@ unsigned short UDPServer::computeChecksum(const unsigned char* data, const char*
 	unsigned int sum;
 	char* byte;
 
-	cout << "Client IP in Server Compute Checksum: " << string(clientIP) << endl;
+//	cout << "Client IP in Server Compute Checksum: " << string(clientIP) << endl;
 
 	UDPSocket->getAddress(serverAddress);
 
 	pseudoHeaderIPs = inet_ntoa(serverAddress.sin_addr) + string(".") + string(clientIP);
-	cout << "Header IPs: " << pseudoHeaderIPs << endl;
+//	cout << "Header IPs: " << pseudoHeaderIPs << endl;
 
 
 	// Begin Source IP
@@ -743,7 +741,6 @@ unsigned short UDPServer::computeChecksum(const unsigned char* data, const char*
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
 	i = (i << 8) | atoi(worker.c_str());
-	cout << "I: " << i << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
 
 
@@ -752,12 +749,11 @@ unsigned short UDPServer::computeChecksum(const unsigned char* data, const char*
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
 	j = (j << 8) | atoi(worker.c_str());
-	cout << "J: " << j << endl;
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
 
 
 	sum = i + j;
-	cout << "SUM After Src IP: " << sum << endl;
+//	cout << "SUM After Src IP: " << sum << endl;
 
 
 	// Begin Dest IP
@@ -775,25 +771,24 @@ unsigned short UDPServer::computeChecksum(const unsigned char* data, const char*
 	pseudoHeaderIPs = pseudoHeaderIPs.substr(worker.length() + 1);
 	worker = pseudoHeaderIPs.substr(0, pseudoHeaderIPs.find_first_of('.'));
 	i = (i << 8) | atoi(worker.c_str());
-	cout << "I: " << i << endl;
 
 	sum = sum + i;
 	// End Dest IP
 
-	cout << "SUM After Dst IP: " << sum << endl;
+//	cout << "SUM After Dst IP: " << sum << endl;
 
 
 	// Begin Protocol
 	i = 17;
 	sum = sum + i;
-	cout << "SUM After Protocol: " << sum << endl;
+//	cout << "SUM After Protocol: " << sum << endl;
 	// End Protocol
 
 
 	// Begin UDP Length (Pseudo header length field)
 	i = ((data[4] << 8) | data[5]);//HEADER_SIZE_BYTES + udpPacketData.length();
 	sum = sum + i;
-	cout << "SUM After Length: " << sum << endl;
+//	cout << "SUM After Length: " << sum << endl;
 	// End UDP Length
 
 
@@ -801,20 +796,20 @@ unsigned short UDPServer::computeChecksum(const unsigned char* data, const char*
 	i = ((data[0] << 8) | data[1]);
 	i = 20;
 	sum = sum + i;
-	cout << "SUM After Src Port: " << sum << endl;
+//	cout << "SUM After Src Port: " << sum << endl;
 	// End Src Port
 
 	// Begin Dst Port
 	i = ((data[2] << 8) | data[3]);
 	sum = sum + i;
-	cout << "SUM After Dst Port: " << sum << endl;
+//	cout << "SUM After Dst Port: " << sum << endl;
 	// End Dst Port
 
 
 
 	i = ((data[4] << 8) | data[5]);// HEADER_SIZE_BYTES + udpPacketData.length();
 	sum = sum + i;
-	cout << "SUM After Length: " << sum << endl;
+//	cout << "SUM After Length: " << sum << endl;
 	// End UDP Length
 
 
@@ -847,8 +842,6 @@ unsigned short UDPServer::computeChecksum(const unsigned char* data, const char*
 
 	if (checksum != 65535)
 		checksum = ~checksum;
-
-	cout << "Checksum: " << checksum << endl;
 
 	return checksum;
 }

@@ -13,6 +13,7 @@ private:
 	bool workFinished;
 	unsigned short numThreads;
 	unsigned short currentOctoblock;
+	unsigned short currentOctoleg;
 
 	queue<uint8_t> octolegQueue;
 
