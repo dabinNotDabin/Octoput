@@ -102,14 +102,14 @@ bool UDPClient::bindSocket()
 {
 	if (UDPSocket != NULL)
 	{
-		cout << "Using default socketFD and address to bind.\n";
+//		cout << "Using default socketFD and address to bind.\n";
 
 		int bindResult;
 		sockaddr_in address;
 
 		if (!UDPSocket->addressIsInitialized())
 		{
-			cout << "No address has been associated with the default socket, cannot bind.\n";
+//			cout << "No address has been associated with the default socket, cannot bind.\n";
 			return false;
 		}
 
@@ -118,17 +118,17 @@ bool UDPClient::bindSocket()
 
 		if (bindResult < 0)
 		{
-			cout << "Socket binding failed..  Either the address is invalid or the socket is not free.\n";
+//			cout << "Socket binding failed..  Either the address is invalid or the socket is not free.\n";
 			return false;
 		}
 		else
 		{
-			cout << "Success binding socket.\n";
+//			cout << "Success binding socket.\n";
 		}
 	}
 	else
 	{
-		cout << "Default socket is null, instantiate it first.\n";
+//		cout << "Default socket is null, instantiate it first.\n";
 		return false;
 	}
 
@@ -146,6 +146,7 @@ void* UDPClient::clientThread(void* id)
 	unsigned short numFullOctolegs;
 	unsigned char* octoleg;
 	unsigned int startPos;
+	unsigned int octolegFlag;
 	unsigned short numTotalOctoblocks;
 	bool finished = false;
 
@@ -166,29 +167,29 @@ void* UDPClient::clientThread(void* id)
 		pthread_mutex_lock(&client->generalMutex);
 		if (client->numOctoblocksReceived < client->octoMonocto.numFullOctoblocks)
 		{
-			cout << "Receiving full octoblocks.\n";
+			//cout << "Receiving full octoblocks.\n";
 			octoleg = new unsigned char[client->fullOctolegSize];
-			startPos = (unsigned int)(	(unsigned int)client->numOctoblocksReceived * (unsigned int)8888) +
-										(unsigned int)((client->numOctolegsReceived % 8) * client->fullOctolegSize);
+			startPos = (unsigned int)((unsigned int)client->numOctoblocksReceived * (unsigned int)8888);// +
+//										(unsigned int)((client->numOctolegsReceived % 8) * client->fullOctolegSize);
 			octolegSize = client->fullOctolegSize;
 		}
 		else if (client->numOctoblocksReceived == client->octoMonocto.numFullOctoblocks)
 		{
-			cout << "Receiving partial octoblock.\n";
+			//cout << "Receiving partial octoblock.\n";
 			octoleg = new unsigned char[client->octoMonocto.partialOctolegSize];
 			startPos =
-				(unsigned int)((unsigned int)client->octoMonocto.numFullOctoblocks * (unsigned int)8888) +
-				(unsigned int)((client->numOctolegsReceived - numFullOctolegs) * client->octoMonocto.partialOctolegSize);
+				(unsigned int)((unsigned int)client->octoMonocto.numFullOctoblocks * (unsigned int)8888);// +
+//				(unsigned int)((client->numOctolegsReceived - numFullOctolegs) * client->octoMonocto.partialOctolegSize);
 			octolegSize = client->octoMonocto.partialOctolegSize;
 		}
 		else
 		{
-			cout << "Receiving leftover data after " << client->numOctolegsReceived << " octolegs rcvd.\n";
+			//cout << "Receiving leftover data after " << client->numOctolegsReceived << " octolegs rcvd.\n";
 			octoleg = new unsigned char[1];
 			startPos =
 				(unsigned int)((unsigned int)client->octoMonocto.numFullOctoblocks * (unsigned int)8888) +
-				(unsigned int)((unsigned int)client->octoMonocto.partialOctoblockSize) +
-				(unsigned int)((client->numOctolegsReceived - numFullOctolegs - N_OCTOLEGS_PER_OCTOBLOCK) * 1);
+				(unsigned int)((unsigned int)client->octoMonocto.partialOctoblockSize);// +
+//				(unsigned int)((client->numOctolegsReceived - numFullOctolegs - N_OCTOLEGS_PER_OCTOBLOCK) * 1);
 			octolegSize = 1;
 		}
 
@@ -198,7 +199,15 @@ void* UDPClient::clientThread(void* id)
 			break;
 		}
 
-		client->receiveMssg(octoleg, octolegSize);
+
+		octolegFlag = (unsigned int)client->receiveMssg(octoleg, octolegSize);
+		//cout << "\t\tOctoleg flag for this message: " << (unsigned int)octolegFlag << endl;
+		if (client->numOctoblocksReceived < client->octoMonocto.numFullOctoblocks)
+			startPos += (unsigned int)(octolegFlag * client->fullOctolegSize);
+		else if (client->numOctoblocksReceived == client->octoMonocto.numFullOctoblocks)
+			startPos += (unsigned int)(octolegFlag * client->octoMonocto.partialOctolegSize);
+		else
+			startPos += octolegFlag;
 
 		client->numOctolegsReceived++;
 		if (client->numOctolegsReceived % 8 == 0)
@@ -211,13 +220,13 @@ void* UDPClient::clientThread(void* id)
 		
 		memcpy(&(client->incomingOctodata[(unsigned int)startPos]), octoleg, octolegSize);
 
-		cout << "Mssg copied into incomingOctodata at pos: " << (unsigned int)startPos << endl;
-		for (int i = 0; i < octolegSize; i++)
-			cout << octoleg[i];
-		cout << " Of length: " << octolegSize << endl;
+		//cout << "Mssg copied into incomingOctodata at pos: " << (unsigned int)startPos << endl;
+//		for (int i = 0; i < octolegSize; i++)
+			//cout << octoleg[i];
+		//cout << " Of length: " << octolegSize << endl;
 
-		cout << "Num octoblocks received: " << client->numOctoblocksReceived << endl;
-		cout << "Finished?: " << finished << endl;
+		//cout << "Num octoblocks received: " << client->numOctoblocksReceived << endl;
+		//cout << "Finished?: " << finished << endl;
 		pthread_mutex_unlock(&client->generalMutex);
 
 		currentOctoblock++;
@@ -348,10 +357,10 @@ void UDPClient::commenceOctovation()
 
 	delete[] threads;
 
-	cout << "Incoming octodata after threads exit.\n";
-	for (unsigned int x = 0; x < octoMonocto.totalFileSize; x++)
-		cout << incomingOctodata[x];
-	cout << endl;
+//	cout << "Incoming octodata after threads exit.\n";
+//	for (unsigned int x = 0; x < octoMonocto.totalFileSize; x++)
+//		cout << incomingOctodata[x];
+//	cout << endl;
 	
 	out.open(filenameOut, ios::out | ios::binary);
 	out.write((char*)incomingOctodata, octoMonocto.totalFileSize);
@@ -361,7 +370,7 @@ void UDPClient::commenceOctovation()
 }
 
 
-void UDPClient::receiveMssg(unsigned char *buffer, unsigned short mssgLen)
+unsigned char UDPClient::receiveMssg(unsigned char *buffer, unsigned short mssgLen)
 {
 	int nBytesRcvd;
 	bool rcvdOK = false;
@@ -394,13 +403,13 @@ void UDPClient::receiveMssg(unsigned char *buffer, unsigned short mssgLen)
 		{
 			rcvMssg[nBytesRcvd] = '\0';
 
-			cout << "\t\tBYTES RCVD: " << nBytesRcvd << endl;
+			//cout << "\t\tBYTES RCVD: " << nBytesRcvd << endl;
 
 			rcvdChecksum = ((rcvMssg[6] << 8) | rcvMssg[7]);
-			cout << "Received Octoleg Checksum: " << rcvdChecksum << endl;
+			//cout << "Received Octoleg Checksum: " << rcvdChecksum << endl;
 
 			checksum = computeChecksum(rcvMssg, inet_ntoa(serverAddress.sin_addr), serverAddress.sin_port);
-			cout << "Checksum Computed: " << checksum << endl;
+			//cout << "Checksum Computed: " << checksum << endl;
 
 			octolegFlag = rcvMssg[5];
 		}
@@ -433,6 +442,8 @@ void UDPClient::receiveMssg(unsigned char *buffer, unsigned short mssgLen)
 	}
 	
 	memcpy(buffer, &rcvMssg[HEADER_SIZE_BYTES], mssgLen);
+
+	return octolegFlag;
 }
 
 
@@ -584,6 +595,7 @@ string UDPClient::askUserForFilename()
 
 	cout << "Enter the name of the file you would like to receive: ";
 	cin >> filename;
+	cin.ignore();
 	cout << endl;
 	sendto
 	(
@@ -609,16 +621,18 @@ string UDPClient::askUserForFilename()
 		);
 	}
 
-	cout << "Confirmation Received: ";
-	confirmation[nBytesRcvd] = '\0';
-	for (int i = 0; i < nBytesRcvd; i++)
-		cout << confirmation[i];
-	cout << endl;
-
+	if (nBytesRcvd > 0 && nBytesRcvd < 23)
+	{
+		cout << "Confirmation Received: ";
+		confirmation[nBytesRcvd] = '\0';
+		for (int i = 0; i < nBytesRcvd; i++)
+			cout << confirmation[i];
+		cout << endl;
+	}
 	// validate checksum.
 
-	confirmationStr = string((char*)confirmation);
-	while (confirmationStr.compare("OK") != 0)
+//	confirmationStr = string((char*)confirmation);
+	while (confirmation[0] != 'O' && confirmation[1] != 'K')
 	{
 		cout << "Enter the name of the file you would like to receive: ";
 		cin >> filename;
@@ -647,18 +661,15 @@ string UDPClient::askUserForFilename()
 			);
 		}
 
-		confirmation[nBytesRcvd] = '\0';
-		for (int i = 0; i < nBytesRcvd; i++)
-			cout << confirmation[i];
-		cout << endl;
+		if (nBytesRcvd > 0)
+		{
+			confirmation[nBytesRcvd] = '\0';
+			for (int i = 0; i < nBytesRcvd; i++)
+				cout << confirmation[i];
+			cout << endl;
 
-		
-		// validate checksum.
-
-		if (nBytesRcvd == -1)
-			return '\0';
-
-		confirmationStr = string((char*)confirmation);
+			confirmationStr = string((char*)confirmation);
+		}
 	}
 
 	if (confirmationStr.compare("OK") != 0)
@@ -666,7 +677,7 @@ string UDPClient::askUserForFilename()
 	else
 	{
 		filenameOut = filename + ".txt";
-		return confirmationStr;
+		return filename;
 	}
 }
 

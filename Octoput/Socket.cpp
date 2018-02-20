@@ -36,7 +36,7 @@ bool Socket::initSocket(short family, short type, short protocol)
 		return false;
 	}
 
-	cout << "Socket initialized\n";
+//	cout << "Socket initialized\n";
 
 	FD = fd;
 	fam = family;

@@ -56,5 +56,5 @@ private:
 	bool sendAck(char id);
 	void attachHeader(char octolegFlag, unsigned short payloadSize, unsigned char* data);
 	unsigned short computeChecksum(const unsigned char* data, const char* serverIP, unsigned int serverPort);
-	void receiveMssg(unsigned char *buffer, unsigned short mssgLen);
+	unsigned char receiveMssg(unsigned char *buffer, unsigned short mssgLen);
 };

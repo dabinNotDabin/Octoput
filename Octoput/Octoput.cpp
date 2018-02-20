@@ -18,28 +18,6 @@ int main(int argc, char** argv)
 	ifstream in;
 	string fileContents;
 
-
-	//if (argc > 2 && argc < 4)
-	//{
-	//	// Change so client sends file request.
-	//	//		Server port and Client port are taken as command line args.
-	//	if (argc == 2)
-	//	{
-	//		
-	//		filename = argv[1];
-	//	}
-	//	else
-	//	{
-	//		port = atoi(argv[1]);
-	//		filename = argv[2];
-	//	}
-
-
-	//	in.open(filename);
-	//	getline(in, fileContents, '\0');
-	//	in.close();
-
-
 	if (argc == 2)
 	{
 
